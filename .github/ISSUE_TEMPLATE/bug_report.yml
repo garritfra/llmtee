@@ -1,0 +1,34 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: llmtee version
+      description: Output of `llmtee version` or the image tag
+    validations:
+      required: true
+  - type: dropdown
+    id: db
+    attributes:
+      label: Database
+      options: [SQLite, PostgreSQL]
+  - type: input
+    id: client
+    attributes:
+      label: Client and upstream
+      description: e.g. OpenAI Python SDK 1.x against /openai, Claude Code against /anthropic
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant llmtee log lines. Remove API keys and personal data.
+      render: text

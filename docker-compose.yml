@@ -1,0 +1,19 @@
+# Quickstart: docker compose up -d, then open http://localhost:8080
+services:
+  llmtee:
+    image: ghcr.io/garritfra/llmtee:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      LLMTEE_ADMIN_PASSWORD: ${LLMTEE_ADMIN_PASSWORD:-change-me}
+      # Optional, only needed for managed keys (llmtee injects the provider key):
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # Local models:
+      # LLMTEE_UPSTREAM_OLLAMA: http://host.docker.internal:11434
+    volumes:
+      - llmtee-data:/data
+
+volumes:
+  llmtee-data:

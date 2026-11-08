@@ -421,6 +421,10 @@ func seedCmd(cfgPath string, args []string) error {
 			}
 		}
 		u := usage.Usage{Known: true, Model: m.name, Input: in, Output: out, CacheRead: cacheRead, CacheWrite: cacheWrite}
+		if m.upstream == "openrouter" { // OpenRouter reports the cost itself
+			c := float64(in)*0.27e-6 + float64(out)*1.1e-6
+			u.Cost = &c
+		}
 		status := 200
 		errStr := ""
 		if rand.IntN(60) == 0 {

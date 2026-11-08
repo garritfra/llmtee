@@ -1,0 +1,22 @@
+name: Provider support
+description: A provider, endpoint or response format llmtee does not handle yet
+labels: [provider-support]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Provider and endpoint
+      description: e.g. Azure OpenAI /openai/deployments/{id}/chat/completions
+    validations:
+      required: true
+  - type: textarea
+    id: format
+    attributes:
+      label: Where does the usage appear?
+      description: A redacted sample response or stream (the part containing token counts) helps most.
+      render: text
+  - type: textarea
+    id: why
+    attributes:
+      label: Your setup
+      description: How do you use this provider today?

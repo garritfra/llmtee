@@ -1,0 +1,8 @@
+# Local price overrides in USD per 1M tokens. They win over the embedded
+# LiteLLM table. cache_read / cache_write default to the input price.
+models:
+  "llama3.1:8b": {input: 0, output: 0}
+  "qwen2.5-coder:*": {input: 0, output: 0}       # glob patterns allowed
+  "my-finetune": {input: 0.30, output: 1.20, cache_read: 0.03}
+upstreams:
+  ollama: {input: 0, output: 0}                  # every model on this upstream

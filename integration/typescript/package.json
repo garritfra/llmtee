@@ -1,0 +1,10 @@
+{
+  "name": "llmtee-integration",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node test.mjs" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.60.0",
+    "openai": "^5.0.0"
+  }
+}

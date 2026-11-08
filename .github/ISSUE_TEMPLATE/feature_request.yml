@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an idea
+labels: [feature]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        llmtee stays a single binary. Features that need a second service, or that can be solved with the CSV export or a webhook, are usually out of scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and why is it hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal

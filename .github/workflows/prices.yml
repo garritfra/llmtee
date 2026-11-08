@@ -1,0 +1,30 @@
+name: Update price table
+on:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run ./internal/pricing/gen
+      - run: go test ./internal/pricing/ ./internal/proxy/
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/update-prices
+          commit-message: "chore: update embedded LiteLLM price table"
+          title: "chore: update embedded LiteLLM price table"
+          body: |
+            Weekly refresh of `internal/pricing/prices.json` from
+            [LiteLLM's model_prices_and_context_window.json](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (MIT).
+          labels: dependencies
+          delete-branch: true

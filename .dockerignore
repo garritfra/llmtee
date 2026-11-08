@@ -1,0 +1,6 @@
+.git
+dist
+*.db*
+data
+integration/**/node_modules
+integration/**/.venv

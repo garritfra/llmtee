@@ -1,0 +1,13 @@
+# Used by goreleaser: copies the prebuilt binary for the target platform.
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG TARGETPLATFORM
+COPY --chown=65532:65532 --chmod=755 $TARGETPLATFORM/llmtee /llmtee
+COPY --chown=65532:65532 deploy/docker/data /data
+USER 65532:65532
+WORKDIR /data
+ENV DATABASE_URL=sqlite:///data/llmtee.db \
+    LLMTEE_LISTEN=:8080
+VOLUME /data
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s CMD ["/llmtee", "healthcheck"]
+ENTRYPOINT ["/llmtee"]

@@ -1,0 +1,37 @@
+# /etc/systemd/system/llmtee.service
+#   sudo useradd --system --home /var/lib/llmtee --shell /usr/sbin/nologin llmtee
+#   sudo install -m 755 llmtee /usr/local/bin/llmtee
+#   sudo install -m 600 -o llmtee /dev/null /etc/llmtee.env   # then add LLMTEE_ADMIN_PASSWORD=...
+#   sudo systemctl daemon-reload && sudo systemctl enable --now llmtee
+[Unit]
+Description=llmtee LLM logging and cost proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=llmtee
+Group=llmtee
+StateDirectory=llmtee
+WorkingDirectory=/var/lib/llmtee
+Environment=DATABASE_URL=sqlite:///var/lib/llmtee/llmtee.db
+Environment=LLMTEE_LISTEN=127.0.0.1:8080
+EnvironmentFile=-/etc/llmtee.env
+ExecStart=/usr/local/bin/llmtee
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/var/lib/llmtee
+
+[Install]
+WantedBy=multi-user.target

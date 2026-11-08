@@ -1,0 +1,41 @@
+# llmtee --config examples/config.yaml   (or LLMTEE_CONFIG=...)
+# Every key can also be set via environment variables (they win), see README.
+# ${VAR} references are expanded from the environment.
+listen: ":8080"
+database_url: "sqlite:///data/llmtee.db"   # or postgres://user:pass@host/db
+admin_password: "${LLMTEE_ADMIN_PASSWORD}"
+ui_auth: true              # false if a reverse proxy already authenticates
+require_proxy_key: false   # true: reject requests without a llmtee key
+
+log_bodies: true
+body_retention_days: 30
+retention_days: 0          # 0 = keep request metadata forever
+max_body_bytes: 2097152
+redact_fields: [api_key, password, email]
+
+inject_stream_usage: true  # add stream_options.include_usage to OpenAI streams
+prices_file: "examples/prices.yaml"
+
+upstreams:
+  # Built-in: openai, anthropic, openrouter. Override fields or add your own;
+  # custom upstreams are served at /u/<name>/v1/...
+  - name: openai
+    api_key: "${OPENAI_API_KEY}"     # only used for managed llmtee keys
+  - name: ollama
+    type: openai
+    base_url: http://localhost:11434
+  - name: vllm
+    type: openai
+    base_url: http://gpu-box:8000
+    log_bodies: false
+  - name: groq
+    type: openai
+    base_url: https://api.groq.com/openai
+    api_key: "${GROQ_API_KEY}"
+
+alerts:
+  webhook_url: ""                          # POST JSON on budget thresholds
+  ntfy_url: "https://ntfy.sh/my-llm-alerts"
+  thresholds: [0.8, 1.0]
+  global_budget_day_usd: 20
+  global_budget_month_usd: 200

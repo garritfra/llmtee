@@ -1,0 +1,56 @@
+version: 2
+project_name: llmtee
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: llmtee
+    main: ./cmd/llmtee
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [LICENSE, README.md, examples/*]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other
+      order: 999
+  filters:
+    exclude: ['^docs:', '^test:', '^chore:', '^ci:']
+
+dockers_v2:
+  - images: [ghcr.io/garritfra/llmtee]
+    dockerfile: Dockerfile.goreleaser
+    extra_files: [deploy/docker/data]
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms: [linux/amd64, linux/arm64]
+    labels:
+      org.opencontainers.image.title: llmtee
+      org.opencontainers.image.description: Self-hosted LLM request logger and cost proxy in a single binary
+      org.opencontainers.image.source: https://github.com/garritfra/llmtee
+      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"

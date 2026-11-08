@@ -1,0 +1,14 @@
+# TLS in front of llmtee. Caddy obtains certificates automatically.
+llm.example.com {
+	encode {
+		# Never compress event streams, it would buffer them.
+		match {
+			not header Content-Type text/event-stream*
+		}
+		gzip
+	}
+	reverse_proxy 127.0.0.1:8080 {
+		# Pass streamed chunks through immediately.
+		flush_interval -1
+	}
+}
