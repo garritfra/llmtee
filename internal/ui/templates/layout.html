@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llmtee</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/"><span class="tee">┬</span> llmtee</a>
+  {{if ne .Page "login"}}
+  <nav>
+    <a href="/" {{if eq .Path "/"}}class="active"{{end}}>Overview</a>
+    <a href="/requests" {{if eq .Path "/requests"}}class="active"{{end}}>Requests</a>
+    <a href="/keys" {{if eq .Path "/keys"}}class="active"{{end}}>Keys</a>
+  </nav>
+  <div class="spacer"></div>
+  {{if readonly}}<span class="pill">read-only demo</span>{{end}}
+  {{if uiauth}}<form method="post" action="/logout"><button class="link">Log out</button></form>{{end}}
+  {{end}}
+</header>
+{{if .StoreErr}}<div class="banner error">Database unavailable: {{.StoreErr}}. The proxy keeps forwarding requests, but nothing is logged.</div>{{end}}
+<main>
+{{template "content" .}}
+</main>
+<footer>llmtee {{version}} · <a href="/metrics">metrics</a> · <a href="https://github.com/garritfra/llmtee">GitHub</a></footer>
+</body>
+</html>

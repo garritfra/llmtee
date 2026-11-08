@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="login">
+  <h1>Sign in</h1>
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>Admin password<input type="password" name="password" autofocus required autocomplete="current-password"></label>
+    {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+    <button class="primary">Sign in</button>
+  </form>
+  <p class="muted small">Set with <code>LLMTEE_ADMIN_PASSWORD</code>.</p>
+</div>
+{{end}}

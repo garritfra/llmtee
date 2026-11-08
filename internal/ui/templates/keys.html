@@ -1,0 +1,61 @@
+{{define "content"}}
+<div class="head"><h1>Keys</h1></div>
+{{if .Error}}<div class="banner error">{{.Error}}</div>{{end}}
+{{if .Secret}}
+<div class="banner ok">
+  <p>Key <strong>{{.Created.Name}}</strong> created. Copy it now, it is not shown again:</p>
+  <pre class="secret">{{.Secret}}</pre>
+  <p class="small">Use it like a provider key, e.g. <code>OPENAI_API_KEY={{.Secret}}</code> with base URL <code>http://&lt;host&gt;:8080/openai/v1</code>. llmtee injects the real provider key.</p>
+</div>
+{{else if .Created}}<div class="banner ok">Passthrough key <strong>{{.Created.Name}}</strong> labeled.</div>{{end}}
+
+<section class="card">
+  <table>
+    <thead><tr><th>Name</th><th>Kind</th><th>ID</th><th class="num">Today</th><th class="num">This month</th><th>Daily budget</th><th>Monthly budget</th><th></th></tr></thead>
+    <tbody>
+    {{range .Keys}}
+    <tr>
+      {{if readonly}}
+      <td><a href="/requests?key={{.ID}}">{{.Name}}</a></td><td>{{.Kind}}</td><td class="mono small">{{.ID}}</td>
+      <td class="num">{{usd .Spend.Day}}</td><td class="num">{{usd .Spend.Month}}</td>
+      <td>{{if .BudgetDayUSD}}{{usd (deref .BudgetDayUSD)}}{{else}}—{{end}}</td><td>{{if .BudgetMonthUSD}}{{usd (deref .BudgetMonthUSD)}}{{else}}—{{end}}</td><td></td>
+      {{else}}
+      <td><input form="k-{{.ID}}" name="name" value="{{.Name}}" class="narrow"> <a href="/requests?key={{.ID}}" title="requests">↗</a></td>
+      <td>{{.Kind}}</td><td class="mono small">{{.ID}}</td>
+      <td class="num">{{usd .Spend.Day}}</td><td class="num">{{usd .Spend.Month}}</td>
+      <td><input form="k-{{.ID}}" name="budget_day" value="{{with .BudgetDayUSD}}{{.}}{{end}}" placeholder="none" class="money"></td>
+      <td><input form="k-{{.ID}}" name="budget_month" value="{{with .BudgetMonthUSD}}{{.}}{{end}}" placeholder="none" class="money"></td>
+      <td class="actions">
+        <form id="k-{{.ID}}" method="post" action="/keys/{{.ID}}"><button>Save</button></form>
+        <form method="post" action="/keys/{{.ID}}/delete" onsubmit="return confirm('Delete key {{.Name}}? Clients using it will get 401.')"><button class="danger">Delete</button></form>
+      </td>
+      {{end}}
+    </tr>
+    {{else}}
+    <tr><td colspan="8" class="muted">No keys yet. Without keys llmtee runs in passthrough mode and groups requests by a hash of the provider key.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+
+{{if not readonly}}
+<section class="card">
+  <h2>New key</h2>
+  <form method="post" action="/keys" class="newkey">
+    <label>Name<input name="name" required placeholder="e.g. hermes-agent"></label>
+    <label>Kind
+      <select name="kind" onchange="document.getElementById('pk').hidden = this.value !== 'passthrough'">
+        <option value="managed">managed: new llmtee key, provider key injected</option>
+        <option value="passthrough">passthrough: label an existing provider key</option>
+      </select>
+    </label>
+    <label id="pk" hidden>Provider key (only its SHA-256 hash is stored)<input name="provider_key" type="password" autocomplete="off"></label>
+    <label>Daily budget (USD)<input name="budget_day" class="money" placeholder="none"></label>
+    <label>Monthly budget (USD)<input name="budget_month" class="money" placeholder="none"></label>
+    <button class="primary">Create</button>
+  </form>
+  <p class="muted small">Budgets are hard limits: once a key reaches one, requests get HTTP 429 until the next UTC day or month.
+    Managed keys need the provider key in the environment (<code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>OPENROUTER_API_KEY</code> or <code>LLMTEE_UPSTREAM_&lt;NAME&gt;_API_KEY</code>).</p>
+</section>
+{{end}}
+{{end}}

@@ -1,0 +1,79 @@
+{{define "content"}}
+<div class="head">
+  <h1>Overview</h1>
+  <div class="seg">
+    {{range .Ranges}}<a href="/?range={{.Key}}" {{if eq $.Range .Key}}class="on"{{end}}>{{.Key}}</a>{{end}}
+    <a href="/?range=all" {{if eq .Range "all"}}class="on"{{end}}>all</a>
+  </div>
+</div>
+{{if .LogBodies}}<p class="note">Request and response bodies are stored for {{if gt .BodyDays 0}}{{.BodyDays}} days{{else}}ever{{end}}. They can contain sensitive data. Set <code>LLMTEE_LOG_BODIES=false</code> to turn this off.</p>{{end}}
+
+<section class="tiles">
+  <div class="tile"><div class="label">Spend today (UTC)</div><div class="value">{{usd .Today.CostUSD}}</div><div class="sub">{{num .Today.Requests}} requests</div></div>
+  <div class="tile"><div class="label">Spend this month</div><div class="value">{{usd .Month.CostUSD}}</div><div class="sub">{{num .Month.Requests}} requests</div></div>
+  <div class="tile"><div class="label">Spend, {{.Range}}</div><div class="value">{{usd .Total.CostUSD}}</div><div class="sub">{{num .Total.Requests}} requests</div></div>
+  <div class="tile"><div class="label">Tokens, {{.Range}}</div><div class="value">{{num .Total.TokensIn}} <span class="muted">in</span></div><div class="sub">{{num .Total.TokensOut}} out · {{num .Total.CacheRead}} cached</div></div>
+  <div class="tile"><div class="label">Errors, {{.Range}}</div><div class="value">{{num .Total.Errors}}</div><div class="sub">{{if .Total.Unpriced}}<a href="/requests?range={{.Range}}">{{num .Total.Unpriced}} without known price</a>{{else}}all requests priced{{end}}</div></div>
+</section>
+
+<section class="card">
+  <h2>Cost per day <span class="muted small">max {{usd .MaxCost}}</span></h2>
+  {{if .Bars}}
+  <div class="chart">
+    {{range .Bars}}<div class="col" title="{{.Label}}: {{usd .Cost}} · {{num .Reqs}} requests"><div class="bar" style="height: {{printf "%.1f" .Height}}%"></div></div>{{end}}
+  </div>
+  <div class="axis"><span>{{(index .Bars 0).Label}}</span><span>{{(index .Bars (len .Bars | add -1)).Label}}</span></div>
+  {{else}}<p class="muted">No requests yet. Point a client at <code>http://&lt;host&gt;:8080/openai/v1</code> or <code>/anthropic</code>.</p>{{end}}
+</section>
+
+{{if .Budgets}}
+<section class="card">
+  <h2>Budgets</h2>
+  <table>
+    <thead><tr><th>Key</th><th>Today</th><th></th><th>This month</th><th></th></tr></thead>
+    <tbody>
+    {{range .Budgets}}
+      <tr>
+        <td><a href="/requests?key={{.Key.ID}}">{{.Key.Name}}</a></td>
+        <td class="num">{{usd .Spend.Day}}{{if .Key.BudgetDayUSD}} / {{usd (deref .Key.BudgetDayUSD)}}{{end}}</td>
+        <td class="meter-cell">{{if .Key.BudgetDayUSD}}<div class="meter{{if ge .DayPct 100.0}} full{{else if ge .DayPct 80.0}} warn{{end}}"><div style="width: {{printf "%.1f" .DayPct}}%"></div></div>{{end}}</td>
+        <td class="num">{{usd .Spend.Month}}{{if .Key.BudgetMonthUSD}} / {{usd (deref .Key.BudgetMonthUSD)}}{{end}}</td>
+        <td class="meter-cell">{{if .Key.BudgetMonthUSD}}<div class="meter{{if ge .MonthPct 100.0}} full{{else if ge .MonthPct 80.0}} warn{{end}}"><div style="width: {{printf "%.1f" .MonthPct}}%"></div></div>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+
+<div class="grid2">
+  {{template "breakdown" (dict "Title" "By model" "Rows" .ByModel "Param" "model" "Range" .Range "Total" .Total.CostUSD "Kind" "")}}
+  {{template "breakdown" (dict "Title" "By key" "Rows" .ByKey "Param" "key" "Range" .Range "Total" .Total.CostUSD "Kind" "key")}}
+  {{template "breakdown" (dict "Title" "By user" "Rows" .ByUser "Param" "user" "Range" .Range "Total" .Total.CostUSD "Kind" "")}}
+  {{template "breakdown" (dict "Title" "By upstream" "Rows" .ByUpstream "Param" "upstream" "Range" .Range "Total" .Total.CostUSD "Kind" "")}}
+</div>
+{{end}}
+
+{{define "breakdown"}}
+<section class="card">
+  <h2>{{.Title}}</h2>
+  {{if .Rows}}
+  <table>
+    <thead><tr><th></th><th class="num">Cost</th><th class="num">Requests</th><th class="num">Tokens in/out</th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr>
+      <td class="label-cell">
+        {{if .Group}}<a href="/requests?range={{$.Range}}&{{$.Param}}={{.Group}}">{{if eq $.Kind "key"}}{{keyname .Group}}{{else}}{{.Group}}{{end}}</a>{{else}}<span class="muted">(none)</span>{{end}}
+        <div class="share" style="width: {{pct .CostUSD $.Total}}%"></div>
+      </td>
+      <td class="num">{{usd .CostUSD}}{{if .Unpriced}} <span class="warn-text" title="{{.Unpriced}} requests without known price">*</span>{{end}}</td>
+      <td class="num">{{num .Requests}}</td>
+      <td class="num">{{num .TokensIn}} / {{num .TokensOut}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<p class="muted">No data.</p>{{end}}
+</section>
+{{end}}

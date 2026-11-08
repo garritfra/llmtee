@@ -1,0 +1,11 @@
+/llmtee
+/dist/
+*.db
+*.db-shm
+*.db-wal
+/data/
+.env
+coverage.out
+node_modules/
+__pycache__/
+.venv/

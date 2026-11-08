@@ -1,0 +1,51 @@
+{{define "content"}}
+{{with .R}}
+<div class="head">
+  <h1>Request <span class="mono small">{{.ID}}</span></h1>
+  <a href="javascript:history.back()">← back</a>
+</div>
+<div class="grid2">
+<section class="card">
+  <h2>Details</h2>
+  <dl class="kv">
+    <dt>Time</dt><dd>{{ts .}} UTC <span class="muted">({{ago .}})</span></dd>
+    <dt>Upstream</dt><dd><a href="/requests?upstream={{.Upstream}}">{{.Upstream}}</a> <span class="mono">{{.Path}}</span></dd>
+    <dt>Model</dt><dd class="mono"><a href="/requests?model={{.Model}}">{{.Model}}</a></dd>
+    <dt>Status</dt><dd>{{if isErr .}}<span class="err">{{.Status}}</span>{{else}}{{.Status}}{{end}}{{if .Streamed}} · streamed{{end}}</dd>
+    {{if .Error}}<dt>Error</dt><dd class="err">{{.Error}}</dd>{{end}}
+    <dt>Key</dt><dd>{{if .KeyID}}<a href="/requests?key={{.KeyID}}">{{keyname .KeyID}}</a> <span class="muted mono">{{.KeyID}}</span>{{else}}<span class="muted">none</span>{{end}}</dd>
+    <dt>User</dt><dd>{{if .UserID}}<a href="/requests?user={{.UserID}}">{{.UserID}}</a>{{else}}<span class="muted">none</span>{{end}}</dd>
+    <dt>Session</dt><dd>{{if .SessionID}}<a href="/requests?session={{.SessionID}}">{{.SessionID}}</a>{{else}}<span class="muted">none</span>{{end}}</dd>
+    <dt>Latency</dt><dd>{{ms .LatencyMS}}{{if .TTFTMS}} · first token after {{msp .TTFTMS}}{{end}}</dd>
+  </dl>
+</section>
+<section class="card">
+  <h2>Usage &amp; cost</h2>
+  {{if usageUnknown .}}<p class="warn-text">Usage unknown: the response contained no usage data. llmtee does not estimate tokens.</p>{{end}}
+  <dl class="kv">
+    <dt>Input tokens</dt><dd>{{nump .TokensIn}} <span class="muted">(uncached)</span></dd>
+    <dt>Output tokens</dt><dd>{{nump .TokensOut}}</dd>
+    <dt>Cache read</dt><dd>{{nump .TokensCacheRead}}</dd>
+    <dt>Cache write</dt><dd>{{nump .TokensCacheWrite}}</dd>
+    <dt>Cost</dt><dd class="big">{{usdp .CostUSD}}{{if and .TokensIn (not .CostUSD)}} <span class="muted small">no price known for this model; add it to prices.yaml</span>{{end}}</dd>
+  </dl>
+  {{if $.Props}}
+  <h2>Properties</h2>
+  <dl class="kv">{{range $.Props}}<dt>{{.K}}</dt><dd><a href="/requests?prop={{.K}}={{.V}}">{{.V}}</a></dd>{{end}}</dl>
+  {{end}}
+</section>
+</div>
+{{if .HasBody}}
+<section class="card">
+  <h2>Request body</h2>
+  <pre class="body">{{$.ReqBody}}</pre>
+</section>
+<section class="card">
+  <h2>Response body{{if .Streamed}} <span class="muted small">(raw event stream)</span>{{end}}</h2>
+  <pre class="body">{{$.RespBody}}</pre>
+</section>
+{{else}}
+<p class="muted">No bodies stored for this request (body logging disabled, omitted via header, or expired).</p>
+{{end}}
+{{end}}
+{{end}}

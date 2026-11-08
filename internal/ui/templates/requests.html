@@ -1,0 +1,61 @@
+{{define "content"}}
+<div class="head">
+  <h1>Requests</h1>
+  <a class="button" href="/export.csv?{{query .Query}}" id="export">Export CSV</a>
+</div>
+<form class="filters" hx-get="/requests" hx-target="#results" hx-push-url="true" hx-trigger="change, keyup changed delay:400ms from:input[type=text]">
+  <select name="range">
+    {{range .Ranges}}<option value="{{.Key}}" {{if eq $.Range .Key}}selected{{end}}>last {{.Label}}</option>{{end}}
+    <option value="all" {{if eq .Range "all"}}selected{{end}}>all time</option>
+  </select>
+  <select name="upstream"><option value="">all upstreams</option>{{range .Upstreams}}<option {{if eq . ($.Q.Get "upstream")}}selected{{end}}>{{.}}</option>{{end}}</select>
+  <select name="model"><option value="">all models</option>{{range .Models}}<option {{if eq . ($.Q.Get "model")}}selected{{end}}>{{.}}</option>{{end}}</select>
+  <select name="key"><option value="">all keys</option>{{range .Keys}}<option value="{{.ID}}" {{if eq .ID ($.Q.Get "key")}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+  <select name="status">
+    <option value="">any status</option>
+    <option value="ok" {{if eq ($.Q.Get "status") "ok"}}selected{{end}}>success</option>
+    <option value="error" {{if eq ($.Q.Get "status") "error"}}selected{{end}}>errors</option>
+  </select>
+  <input type="text" name="user" placeholder="user" value="{{.Q.Get "user"}}">
+  <input type="text" name="session" placeholder="session" value="{{.Q.Get "session"}}">
+  <input type="text" name="prop" placeholder="property=value" value="{{.Q.Get "prop"}}">
+</form>
+<div id="results">{{template "results" .}}</div>
+{{end}}
+
+{{define "results"}}
+{{with .Sum}}<p class="summary">{{num .Requests}} requests · {{usd .CostUSD}} · {{num .TokensIn}} tokens in · {{num .TokensOut}} out{{if .Errors}} · <span class="err">{{num .Errors}} errors</span>{{end}}</p>{{end}}
+<div class="table-wrap">
+<table class="requests">
+  <thead><tr>
+    <th>Time (UTC)</th><th>Upstream</th><th>Model</th><th>Key</th><th>User</th><th>Status</th>
+    <th class="num">In</th><th class="num">Out</th><th class="num">Cached</th><th class="num">Cost</th><th class="num">Latency</th><th class="num">TTFT</th>
+  </tr></thead>
+  <tbody>{{template "rows" .}}</tbody>
+</table>
+</div>
+{{if not .Requests}}<p class="muted">No requests match.</p>{{end}}
+{{end}}
+
+{{define "rows"}}
+{{range .Requests}}
+<tr class="{{if isErr .}}is-error{{end}}" onclick="location.href='/requests/{{.ID}}'">
+  <td><a href="/requests/{{.ID}}" title="{{ago .}}">{{ts .}}</a>{{if .Streamed}} <span class="tag" title="streamed">sse</span>{{end}}</td>
+  <td>{{.Upstream}}</td>
+  <td class="mono">{{.Model}}</td>
+  <td>{{keyname .KeyID}}</td>
+  <td>{{.UserID}}</td>
+  <td>{{if isErr .}}<span class="err" title="{{.Error}}">{{.Status}}</span>{{else}}{{.Status}}{{end}}</td>
+  {{if usageUnknown .}}<td class="num muted" colspan="3" title="The response contained no usage data">usage unknown</td>
+  {{else}}<td class="num">{{nump .TokensIn}}</td><td class="num">{{nump .TokensOut}}</td><td class="num">{{nump .TokensCacheRead}}</td>{{end}}
+  <td class="num">{{usdp .CostUSD}}</td>
+  <td class="num">{{ms .LatencyMS}}</td>
+  <td class="num">{{msp .TTFTMS}}</td>
+</tr>
+{{end}}
+{{if .More}}
+<tr class="more" id="more"><td colspan="12">
+  <button hx-get="/requests?{{query .Next}}" hx-target="#more" hx-swap="outerHTML" hx-push-url="false">Load more</button>
+</td></tr>
+{{end}}
+{{end}}

@@ -1,0 +1,34 @@
+version: "2"
+linters:
+  default: standard
+  enable:
+    - misspell
+    - bodyclose
+    - unconvert
+  settings:
+    errcheck:
+      exclude-functions:
+        - (io.Closer).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Stmt).Close
+        - (*database/sql.Rows).Close
+        - (net/http.ResponseWriter).Write
+        - (*net/http.Server).Close
+        - (*github.com/garritfra/llmtee/internal/usage.StreamParser).Write
+        - (github.com/garritfra/llmtee/internal/store.Store).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - io.WriteString
+        - crypto/rand.Read
+        - (*encoding/json.Encoder).Encode
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters: [errcheck, bodyclose]
+formatters:
+  enable:
+    - gofmt
