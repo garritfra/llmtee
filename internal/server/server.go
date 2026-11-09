@@ -98,11 +98,11 @@ func New(ctx context.Context, cfg *config.Config, version string) (*Server, erro
 	for _, p := range proxy.Prefixes() {
 		mux.Handle(p, px)
 	}
-	mux.Handle("/metrics", s.Metrics.Handler())
+	mux.Handle("/metrics", adminOnly(u.Authorized, s.Metrics.Handler()))
 	mux.HandleFunc("/healthz", s.healthz)
 	mux.Handle("/mcp", &mcp.Server{Store: s.Store, Keys: s.Keys, Budgets: s.Budgets, Authorized: u.Authorized, Version: version})
 	u.Register(mux)
-	s.Handler = mux
+	s.Handler = securityHeaders(mux)
 
 	bctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
@@ -175,21 +175,32 @@ func (s *Server) syncLoop(ctx context.Context) {
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
-	res := map[string]any{"status": "ok", "queue": s.Pipeline.QueueLen()}
-	if s.Store == nil {
-		res["database"] = "unavailable"
-	} else {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		if err := s.Store.Ping(ctx); err != nil {
-			res["database"] = "error: " + err.Error()
-		} else {
-			res["database"] = "ok"
-		}
-	}
 	// The proxy works without a database, so health stays 200.
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func adminOnly(authorized func(*http.Request) bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(r) {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="llmtee"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Strict-Transport-Security", "max-age=31536000")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Close flushes pending events and closes the database.

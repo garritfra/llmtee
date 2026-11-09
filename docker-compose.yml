@@ -1,4 +1,4 @@
-# Quickstart: docker compose up -d, then open http://localhost:8080
+# Quickstart: LLMTEE_ADMIN_PASSWORD=<secret> docker compose up -d
 services:
   llmtee:
     image: ghcr.io/garritfra/llmtee:latest
@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      LLMTEE_ADMIN_PASSWORD: ${LLMTEE_ADMIN_PASSWORD:-change-me}
+      LLMTEE_ADMIN_PASSWORD: ${LLMTEE_ADMIN_PASSWORD:?set LLMTEE_ADMIN_PASSWORD}
       # Optional, only needed for managed keys (llmtee injects the provider key):
       # OPENAI_API_KEY: ${OPENAI_API_KEY}
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
