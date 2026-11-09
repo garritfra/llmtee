@@ -123,7 +123,7 @@ All settings are environment variables; a YAML file (`--config` or `LLMTEE_CONFI
 |---|---|---|
 | `LLMTEE_LISTEN` | `:8080` | listen address |
 | `DATABASE_URL` | `sqlite://llmtee.db` (`/data/llmtee.db` in Docker) | `sqlite://path` or `postgres://…` |
-| `LLMTEE_ADMIN_PASSWORD` | random, printed at startup | UI login, MCP bearer token |
+| `LLMTEE_ADMIN_PASSWORD` | random, printed at startup | UI login, metrics and MCP bearer token |
 | `LLMTEE_UI_AUTH` | `true` | `false` if a reverse proxy already authenticates |
 | `LLMTEE_READ_ONLY` | `false` | read-only UI (demo instances) |
 | `LLMTEE_REQUIRE_PROXY_KEY` | `false` | reject requests without a llmtee key |
@@ -155,8 +155,8 @@ Body logging is **on** by default with 30-day retention, because seeing the exac
 
 - **Web UI** at `/`: spend today/this month, cost per day, breakdowns by model, key, user and upstream, budget meters, a filterable request list (upstream, model, key, user, session, status, property) and request details with bodies. Server-rendered with Go templates and htmx; no separate frontend.
 - **CSV export**: the *Export CSV* button exports the current filter (`/export.csv`), or run `llmtee export --range 30d > requests.csv`.
-- **Prometheus** at `/metrics`: `llmtee_requests_total`, `llmtee_tokens_total`, `llmtee_cost_usd_total`, `llmtee_request_duration_seconds`, `llmtee_time_to_first_token_seconds`, `llmtee_budget_rejections_total`, `llmtee_events_dropped_total`, `llmtee_db_write_errors_total` and more. The endpoint is unauthenticated; do not expose it publicly.
-- **Health** at `/healthz`: always `200` while the proxy runs, with the database state in the body.
+- **Prometheus** at `/metrics`: `llmtee_requests_total`, `llmtee_tokens_total`, `llmtee_cost_usd_total`, `llmtee_request_duration_seconds`, `llmtee_time_to_first_token_seconds`, `llmtee_budget_rejections_total`, `llmtee_events_dropped_total`, `llmtee_db_write_errors_total` and more. Send `Authorization: Bearer <admin password>` or use an authenticated UI session.
+- **Health** at `/healthz`: always `200` while the proxy runs, with only `{"status":"ok"}` in the body.
 - **MCP** at `/mcp` (streamable HTTP, `Authorization: Bearer <admin password>`): tools `get_spend`, `list_requests` and `get_request`. For example, with Claude Code:
 
   ```sh

@@ -215,12 +215,15 @@ func TestEndToEnd(t *testing.T) {
 		t.Errorf("mcp without auth = %d", code)
 	}
 
-	// Health and metrics.
-	if code, body := get(t, c, hs.URL+"/healthz"); code != 200 || !strings.Contains(body, `"database":"ok"`) {
+	// Health is public but does not reveal internal state. Metrics need admin auth.
+	if code, body := get(t, c, hs.URL+"/healthz"); code != 200 || strings.TrimSpace(body) != `{"status":"ok"}` {
 		t.Errorf("healthz %d %s", code, body)
 	}
-	if _, body := get(t, c, hs.URL+"/metrics"); !strings.Contains(body, "llmtee_cost_usd_total") || !strings.Contains(body, "llmtee_budget_rejections_total") {
-		t.Error("metrics missing")
+	if code, _ := get(t, c, hs.URL+"/metrics"); code != http.StatusUnauthorized {
+		t.Errorf("metrics without auth = %d", code)
+	}
+	if code, body := get(t, ui, hs.URL+"/metrics"); code != 200 || !strings.Contains(body, "llmtee_cost_usd_total") || !strings.Contains(body, "llmtee_budget_rejections_total") {
+		t.Errorf("metrics with auth = %d", code)
 	}
 }
 
@@ -231,8 +234,36 @@ func TestProxyWithoutDatabase(t *testing.T) {
 	if code != 200 || !strings.Contains(body, "[DONE]") {
 		t.Fatalf("proxy failed without DB: %d", code)
 	}
-	if code, body := get(t, hs.Client(), hs.URL+"/healthz"); code != 200 || !strings.Contains(body, "unavailable") {
+	if code, body := get(t, hs.Client(), hs.URL+"/healthz"); code != 200 || strings.TrimSpace(body) != `{"status":"ok"}` {
 		t.Errorf("healthz %d %s", code, body)
+	}
+}
+
+func TestSecurityHeaders(t *testing.T) {
+	_, hs := setup(t, "sqlite://"+filepath.Join(t.TempDir(), "headers.db"))
+	resp, err := hs.Client().Get(hs.URL + "/login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	for name, want := range map[string]string{
+		"Strict-Transport-Security": "max-age=31536000",
+		"X-Frame-Options":           "DENY",
+		"Content-Security-Policy":   "frame-ancestors 'none'",
+		"X-Content-Type-Options":    "nosniff",
+		"Cache-Control":             "no-store",
+	} {
+		if got := resp.Header.Get(name); got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	resp, err = hs.Client().Get(hs.URL + "/static/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if got := resp.Header.Get("Cache-Control"); got != "public, max-age=3600" {
+		t.Errorf("static Cache-Control = %q", got)
 	}
 }
 

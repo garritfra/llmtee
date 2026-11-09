@@ -19,11 +19,13 @@ import (
 	"io/fs"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/garritfra/llmtee/internal/budget"
@@ -41,21 +43,45 @@ var staticFS embed.FS
 // Version is shown in the footer.
 var Version = "dev"
 
+const maxLoginAttempts = 10
+
+type loginLimiter struct {
+	mu       sync.Mutex
+	start    time.Time
+	attempts map[string]int
+}
+
+func (l *loginLimiter) allow(ip string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.start.IsZero() || now.Sub(l.start) >= time.Minute {
+		l.start = now
+		l.attempts = map[string]int{}
+	}
+	if l.attempts[ip] >= maxLoginAttempts {
+		return false
+	}
+	l.attempts[ip]++
+	return true
+}
+
 // UI serves the dashboard.
 type UI struct {
-	cfg     *config.Config
-	store   store.Store
-	keys    *keys.Cache
-	budgets *budget.Tracker
-	pages   map[string]*template.Template
-	secret  []byte
+	cfg      *config.Config
+	store    store.Store
+	keys     *keys.Cache
+	budgets  *budget.Tracker
+	pages    map[string]*template.Template
+	secret   []byte
+	loginSem chan struct{}
+	logins   loginLimiter
 	// StoreErr is shown when the database could not be opened.
 	StoreErr error
 }
 
 // New creates the UI. s may be nil if the database is unavailable.
 func New(cfg *config.Config, s store.Store, kc *keys.Cache, b *budget.Tracker) (*UI, error) {
-	u := &UI{cfg: cfg, store: s, keys: kc, budgets: b, pages: map[string]*template.Template{}}
+	u := &UI{cfg: cfg, store: s, keys: kc, budgets: b, pages: map[string]*template.Template{}, loginSem: make(chan struct{}, 4)}
 	sum := sha256.Sum256([]byte("llmtee-ui-session:" + cfg.AdminPassword))
 	u.secret = sum[:]
 	funcs := template.FuncMap{
@@ -217,6 +243,24 @@ func (u *UI) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UI) login(w http.ResponseWriter, r *http.Request) {
+	select {
+	case u.loginSem <- struct{}{}:
+		defer func() { <-u.loginSem }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "too many concurrent login attempts", http.StatusTooManyRequests)
+		return
+	}
+	// RemoteAddr is not spoofable like forwarding headers on a direct connection.
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+	if !u.logins.allow(ip, time.Now()) {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "too many login attempts", http.StatusTooManyRequests)
+		return
+	}
 	pw := r.FormValue("password")
 	next := r.FormValue("next")
 	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {

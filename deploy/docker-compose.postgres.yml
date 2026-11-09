@@ -11,7 +11,7 @@ services:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://llmtee:${POSTGRES_PASSWORD:-llmtee}@postgres:5432/llmtee?sslmode=disable
-      LLMTEE_ADMIN_PASSWORD: ${LLMTEE_ADMIN_PASSWORD:-change-me}
+      LLMTEE_ADMIN_PASSWORD: ${LLMTEE_ADMIN_PASSWORD:?set LLMTEE_ADMIN_PASSWORD}
 
   postgres:
     image: postgres:17-alpine
