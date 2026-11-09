@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"sync"
 	"testing"
 
@@ -39,6 +40,8 @@ func TestThresholdsFireOnce(t *testing.T) {
 	n.Wait()
 	mu.Lock()
 	defer mu.Unlock()
+	// Alerts are delivered concurrently, so arrival order is not defined.
+	sort.Slice(hooks, func(i, j int) bool { return hooks[i].Threshold < hooks[j].Threshold })
 	if len(hooks) != 2 || hooks[0].Threshold != 0.8 || hooks[1].Threshold != 1 || hooks[1].KeyName != "agent" {
 		t.Fatalf("hooks = %+v", hooks)
 	}
