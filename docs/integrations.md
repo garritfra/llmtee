@@ -2,7 +2,7 @@
 
 Replace `localhost:8080` with wherever llmtee runs. In every example the client keeps its own provider key (passthrough). To use a managed llmtee key instead, put the `llmtee-…` key where the provider key would go.
 
-Add `Llmtee-User-Id`, `Llmtee-Session-Id` or `Llmtee-Property-<Name>` headers to attribute requests (see the README).
+Add `Llmtee-User-Id`, `Llmtee-Session-Id` or `Llmtee-Property-<Name>` headers to attribute requests (see [Request headers](headers.md)).
 
 ## OpenAI SDK
 

@@ -53,7 +53,7 @@ Usage:
 Global flags:
   --config FILE                  YAML config (or LLMTEE_CONFIG)
 
-Configuration is read from environment variables, see README.md.
+Configuration is read from environment variables, see docs/configuration.md.
 `
 
 func main() {

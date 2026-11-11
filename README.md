@@ -1,19 +1,18 @@
 # llmtee
 
-**See what your LLM calls cost.** llmtee is a single binary with a single database file, and the only change on your side is the base URL.
+**See what your LLM calls cost.** llmtee is a self-hosted proxy for the OpenAI and Anthropic APIs and for OpenAI-compatible providers such as OpenRouter, Ollama, vLLM and Groq. You point your client's base URL at it, and it logs every request with tokens, cost, latency and time to first token.
 
-llmtee is a self-hosted proxy for the OpenAI and Anthropic APIs (and anything OpenAI-compatible: OpenRouter, Ollama, vLLM, Groq, …). Point your client's base URL at it and every request is logged with tokens, cost, latency and time-to-first-token. Per-key budgets act as an emergency brake and answer with HTTP 429 once a key has spent its daily or monthly limit.
-
-Like the Unix `tee`, it passes every stream through to your client unchanged and keeps a copy.
+Like the Unix `tee`, it passes each response through to your client unchanged and keeps a copy.
 
 ![llmtee overview](docs/screenshot-overview.png)
 
-- No SDK to install. Any client that lets you set a base URL works, including the OpenAI and Anthropic SDKs, Claude Code, Codex and automation tools.
-- It runs as one Go binary on SQLite in WAL mode, so a backup is a file copy. If you already run PostgreSQL, you can use that instead.
-- Budgets are hard limits per key, per day or month. llmtee checks them before the request reaches the provider.
-- Ollama, vLLM and OpenRouter traffic shows up next to OpenAI and Anthropic.
-- llmtee reads `Helicone-User-Id`, `Helicone-Session-Id` and `Helicone-Property-*`, so clients set up for Helicone keep working ([migration guide](docs/migrating-from-helicone.md)).
-- You can get your data out through CSV export, Prometheus metrics, or the MCP server, which also lets agents query their own spend.
+- Any client that lets you set a base URL works without code changes, including the OpenAI and Anthropic SDKs, Claude Code, Codex and automation tools.
+- It runs as one Go binary with a SQLite file, so a backup is a file copy. PostgreSQL works too.
+- Each key can have a daily and monthly budget. Once a key reaches its limit, llmtee answers with HTTP 429 and does not forward the request.
+- Local models (Ollama, vLLM) and hosted APIs show up in the same dashboard.
+- You can read your data through the web UI, CSV export, Prometheus metrics or an MCP server.
+
+llmtee is built for individuals and small teams who want to see and cap their LLM spend. It is not a gateway with routing, fallbacks or multi-tenancy. The current release is 0.x, so configuration may still change between minor versions.
 
 ## Quickstart
 
@@ -22,24 +21,18 @@ docker run -d --name llmtee -p 8080:8080 -v llmtee-data:/data \
   -e LLMTEE_ADMIN_PASSWORD=change-me ghcr.io/garritfra/llmtee
 ```
 
-Point a client at it. Your provider key passes through unchanged:
+Point your client at llmtee. It forwards your provider key unchanged:
 
 ```sh
 export OPENAI_BASE_URL=http://localhost:8080/openai/v1
 export ANTHROPIC_BASE_URL=http://localhost:8080/anthropic
 ```
 
-```python
-from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8080/openai/v1")   # api_key from OPENAI_API_KEY
-client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": "hi"}])
-```
+Send any request, then open <http://localhost:8080> and sign in with the admin password. The request appears in the list with its tokens and cost.
 
-Open <http://localhost:8080> and sign in with the admin password. The request appears in the list with its tokens and cost.
+Without Docker, download a binary from the [releases](https://github.com/garritfra/llmtee/releases) (Linux, macOS and Windows on amd64 and arm64) and run `LLMTEE_ADMIN_PASSWORD=change-me ./llmtee`. llmtee creates `llmtee.db` in the current directory.
 
-Without Docker: download a binary from the [releases](https://github.com/garritfra/llmtee/releases) (Linux, macOS, Windows; amd64 and arm64) and run `LLMTEE_ADMIN_PASSWORD=change-me ./llmtee`. It creates `llmtee.db` in the current directory.
-
-More setups: [docker-compose.yml](docker-compose.yml), [PostgreSQL compose](deploy/docker-compose.postgres.yml), [systemd unit](deploy/systemd/llmtee.service), [Caddy with TLS](deploy/caddy/Caddyfile).
+Other setups: [docker-compose.yml](docker-compose.yml), [PostgreSQL compose](deploy/docker-compose.postgres.yml), [systemd unit](deploy/systemd/llmtee.service), [Caddy with TLS](deploy/caddy/Caddyfile). Client-specific guides for the SDKs, Claude Code, Codex, Ollama, OpenRouter, vLLM and n8n are in [docs/integrations.md](docs/integrations.md).
 
 ## Endpoints
 
@@ -50,38 +43,26 @@ More setups: [docker-compose.yml](docker-compose.yml), [PostgreSQL compose](depl
 | `http://<host>:8080/openrouter/v1` | `https://openrouter.ai/api/v1` |
 | `http://<host>:8080/u/<name>/v1` | any upstream you configure, e.g. `LLMTEE_UPSTREAM_OLLAMA=http://localhost:11434` |
 
-Usage is extracted from `/v1/chat/completions`, `/v1/responses`, `/v1/embeddings` and `/v1/messages`, streamed or not. Every other path (for example `/v1/models` or audio endpoints) is forwarded too. `GET` requests and Anthropic's `count_tokens` are not logged.
-
-Integration guides: [OpenAI and Anthropic SDKs, Claude Code, Codex, Ollama, OpenRouter, vLLM, n8n](docs/integrations.md).
+llmtee logs chat completions, responses, embeddings and Anthropic messages, streamed or not. It forwards all other paths without logging them. Details are in [docs/headers.md](docs/headers.md#logged-endpoints).
 
 ## Keys and budgets
 
-llmtee supports two key modes, and you can mix them:
+llmtee works with two kinds of keys, and you can use both at once.
 
-- **Passthrough** (default): clients send their own provider key. llmtee forwards it and stores only a SHA-256 hash as the key id (`pt-…`). You can label a provider key in the UI (or with `llmtee keys label`) to give it a name and a budget.
-- **Managed**: create a llmtee key (`llmtee-…`) in the UI or with `llmtee keys create NAME`. Clients use it instead of a provider key and llmtee injects the real key from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `LLMTEE_UPSTREAM_<NAME>_API_KEY`. Teammates and agents never see the provider key.
+A **provider key** is your OpenAI, Anthropic or other API key. By default, clients send it as usual and llmtee forwards it. llmtee stores only its SHA-256 hash, as a key id starting with `pt-`. To give a provider key a name and a budget, label it in the UI or with `llmtee keys label`.
 
-A managed key can also be sent next to a provider key in a `Llmtee-Key` header (or `Helicone-Auth: Bearer llmtee-…`) to attribute passthrough traffic.
+A **llmtee key** (`llmtee-…`) replaces the provider key on the client side. llmtee swaps in the real provider key from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `LLMTEE_UPSTREAM_<NAME>_API_KEY`, so teammates and agents never see it. Create one in the UI or on the command line:
 
 ```sh
 llmtee keys create hermes-agent --budget-day 5 --budget-month 60
 llmtee keys list
 ```
 
-Budgets are checked in memory before the request is forwarded. A key at or over its limit gets `429` with a readable error in the provider's error format and a `Retry-After` header; the limit resets at the start of the next UTC day or month. Because cost is known only after a response, the request that crosses the limit completes, so a key can overshoot by one request.
+A client can also send a llmtee key next to its provider key, in a `Llmtee-Key` header, to attribute its requests to that key. To reject all requests without a valid llmtee key, set `LLMTEE_REQUIRE_PROXY_KEY=true`.
 
-Set `LLMTEE_REQUIRE_PROXY_KEY=true` to reject requests without a valid llmtee key.
+llmtee checks budgets in memory before it forwards a request. A key at or over its limit gets a `429` response in the provider's error format, with a `Retry-After` header. Limits reset at the start of the next UTC day or month. llmtee only knows the cost of a request after the response arrives. The request that crosses the limit therefore completes, and a key can overshoot its budget by that one request.
 
-## Request metadata
-
-| Header | Effect |
-|---|---|
-| `Llmtee-User-Id` / `Helicone-User-Id` | user id (falls back to the body's `user` or `metadata.user_id`) |
-| `Llmtee-Session-Id` / `Helicone-Session-Id` | session id |
-| `Llmtee-Property-<Name>` / `Helicone-Property-<Name>` | custom property, filterable in the UI |
-| `Llmtee-Omit-Request`, `Llmtee-Omit-Response`, `Llmtee-Omit-Body` (and Helicone equivalents) | do not store that body |
-
-These headers are removed before the request is forwarded. Every response carries `Llmtee-Request-Id`.
+To tag requests with a user, session or custom property, or to skip storing a body, see [docs/headers.md](docs/headers.md).
 
 ## How it works
 
@@ -93,79 +74,51 @@ client ──► router ─► auth + budget ─► forwarder ─► upstream
           usage parser ─► pricing ─► batch writer ─► SQLite / PostgreSQL ─► UI, /metrics, MCP
 ```
 
-Only routing, the in-memory key and budget check, and forwarding run in the request path. Each chunk is written and flushed to the client immediately; a copy goes to an incremental usage parser. Pricing, budgets, metrics and database writes happen asynchronously in batches (every 500 ms or 100 events). If the database is slow, read-only or gone, requests are still forwarded; events are dropped and counted in `llmtee_events_dropped_total` / `llmtee_db_write_errors_total`.
+Only routing, the in-memory key and budget check, and forwarding happen while the client waits. llmtee writes and flushes each chunk to the client as soon as it arrives, and passes a copy to a usage parser. Golden tests replay recorded OpenAI and Anthropic streams through the proxy and require byte-identical output.
 
-For OpenAI chat streams llmtee adds `stream_options.include_usage: true` when the client did not, so the stream ends with a usage chunk (disable with `LLMTEE_INJECT_STREAM_USAGE=false`). If a response contains no usage, the request is marked "usage unknown"; llmtee never estimates tokens.
+Pricing, budget updates, metrics and database writes run in the background, in batches every 500 ms or 100 events. If the database is slow or unavailable, llmtee still forwards requests. It drops the log events and counts them in `llmtee_events_dropped_total`.
 
-### Cost
+On an Apple M4 Pro at 200 requests per second against a local fake upstream, llmtee added 0.14 ms at p50 and 0.02 ms at p99, and used about 33 MB of memory. You can reproduce this with `make loadtest`.
 
-```
-cost = t_in·p_in + t_out·p_out + t_cache_read·p_cache_read + t_cache_write·p_cache_write
-```
+The tradeoff is that llmtee sits in the request path. If it is down, your LLM calls fail. Monitor `/healthz` and keep the provider's direct base URL at hand as a fallback.
 
-`t_in` counts uncached input tokens only (for OpenAI, `prompt_tokens − cached_tokens`). Prices come from [LiteLLM's price table](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json) (MIT), embedded at build time and refreshed weekly by CI. Anthropic's 1-hour cache writes and long-context tiers are priced separately when the table has them. When OpenRouter reports `usage.cost`, that value is used. Cost is stored with each request, so later price changes do not rewrite history.
+### Token counts and cost
 
-Override or add prices in USD per million tokens with a `prices.yaml` (`LLMTEE_PRICES_FILE`):
+For OpenAI chat streams, llmtee adds `stream_options.include_usage: true` if the client did not, so the stream ends with a usage chunk. You can turn this off with `LLMTEE_INJECT_STREAM_USAGE=false`. If a response contains no usage, llmtee marks the request as "usage unknown". It never estimates tokens.
 
-```yaml
-models:
-  "llama3.1:8b": {input: 0, output: 0}
-  "my-org/*":    {input: 0.5, output: 1.5, cache_read: 0.05}
-upstreams:
-  ollama: {input: 0, output: 0}
-```
+Prices come from [LiteLLM's price table](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json), embedded at build time and refreshed weekly. llmtee stores the cost with each request, so later price changes do not alter past requests. To add prices for local or private models, see [docs/configuration.md](docs/configuration.md#prices).
 
 ## Configuration
 
-All settings are environment variables; a YAML file (`--config` or `LLMTEE_CONFIG`, see [examples/config.yaml](examples/config.yaml)) can hold the same keys. Environment variables win.
+llmtee reads its settings from environment variables or a YAML file. The settings you are most likely to need:
 
 | Variable | Default | |
 |---|---|---|
-| `LLMTEE_LISTEN` | `:8080` | listen address |
-| `DATABASE_URL` | `sqlite://llmtee.db` (`/data/llmtee.db` in Docker) | `sqlite://path` or `postgres://…` |
-| `LLMTEE_ADMIN_PASSWORD` | random, printed at startup | UI login, metrics and MCP bearer token |
-| `LLMTEE_UI_AUTH` | `true` | `false` if a reverse proxy already authenticates |
-| `LLMTEE_READ_ONLY` | `false` | read-only UI (demo instances) |
-| `LLMTEE_REQUIRE_PROXY_KEY` | `false` | reject requests without a llmtee key |
-| `LLMTEE_LOG_BODIES` | `true` | store request and response bodies (zstd-compressed) |
-| `LLMTEE_BODY_RETENTION_DAYS` | `30` | delete bodies after N days (0 = never) |
-| `LLMTEE_RETENTION_DAYS` | `0` | delete request metadata after N days (0 = never) |
-| `LLMTEE_MAX_BODY_BYTES` | `2097152` | bodies are truncated to this size |
-| `LLMTEE_REDACT_FIELDS` | | comma-separated JSON field names replaced by `[REDACTED]` before storage |
-| `LLMTEE_INJECT_STREAM_USAGE` | `true` | add `include_usage` to OpenAI chat streams |
-| `LLMTEE_PRICES_FILE` | | price overrides |
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` | | provider keys for managed llmtee keys |
-| `LLMTEE_UPSTREAM_<NAME>` | | add an upstream at `/u/<name>/`, e.g. `LLMTEE_UPSTREAM_OLLAMA=http://ollama:11434` |
-| `LLMTEE_UPSTREAM_<NAME>_TYPE` | `openai` | `openai` or `anthropic` API format |
-| `LLMTEE_UPSTREAM_<NAME>_API_KEY` | | provider key for managed llmtee keys |
-| `LLMTEE_UPSTREAM_<NAME>_LOG_BODIES` | | per-upstream body logging override |
+| `DATABASE_URL` | `sqlite://llmtee.db` | `sqlite://path` or `postgres://…` |
+| `LLMTEE_ADMIN_PASSWORD` | random, printed at startup | UI login, and bearer token for `/metrics` and `/mcp` |
+| `LLMTEE_UPSTREAM_<NAME>` | | add an upstream at `/u/<name>/` |
+| `LLMTEE_LOG_BODIES` | `true` | store request and response bodies |
 | `LLMTEE_ALERT_WEBHOOK_URL` | | POST a JSON alert when a budget threshold is crossed |
-| `LLMTEE_ALERT_NTFY_URL`, `LLMTEE_ALERT_NTFY_TOKEN` | | send alerts to an [ntfy](https://ntfy.sh) topic |
-| `LLMTEE_ALERT_THRESHOLDS` | `0.8,1` | fractions of a budget that trigger an alert |
-| `LLMTEE_ALERT_GLOBAL_BUDGET_DAY_USD`, `…_MONTH_USD` | | alert on total spend across all keys |
-| `LLMTEE_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
-Upstream names in `LLMTEE_UPSTREAM_<NAME>` must not contain underscores. Setting `LLMTEE_UPSTREAM_OPENAI` (or `ANTHROPIC`, `OPENROUTER`) changes the base URL of a built-in upstream.
+All settings, including retention, redaction, alerts and running several instances against PostgreSQL, are in [docs/configuration.md](docs/configuration.md).
 
 ## Privacy
 
-Body logging is on by default with 30-day retention, so you can inspect the exact prompt and response behind each cost. Bodies can contain personal or confidential data. Turn it off globally (`LLMTEE_LOG_BODIES=false`), per upstream, or per request with `Llmtee-Omit-*` headers, and use `LLMTEE_REDACT_FIELDS` for fields you never want stored. Provider keys are never written to the database; only SHA-256 hashes are. llmtee sends no telemetry.
+Body logging is on by default with 30-day retention, so you can inspect the exact prompt and response behind each cost. Bodies can contain personal or confidential data. You can turn body logging off globally (`LLMTEE_LOG_BODIES=false`), per upstream, or per request with the `Llmtee-Omit-*` headers. `LLMTEE_REDACT_FIELDS` replaces named JSON fields before storage.
+
+llmtee never writes provider keys to the database, only their SHA-256 hashes. It sends no telemetry.
 
 ## UI, export, metrics, MCP
 
-- **Web UI** at `/`: spend today/this month with a comparison to the prior period, a cost chart (hourly for 24 hours, daily or weekly for longer ranges, UTC) that can be split by model, key, user or upstream, breakdowns by the same dimensions, budget meters, a filterable request list (upstream, model, key, user, session, status, property) and request details with bodies. Server-rendered with Go templates and htmx; no separate frontend.
-- **CSV export**: the *Export CSV* button exports the current filter (`/export.csv`), or run `llmtee export --range 30d > requests.csv`.
-- **Prometheus** at `/metrics`: `llmtee_requests_total`, `llmtee_tokens_total`, `llmtee_cost_usd_total`, `llmtee_request_duration_seconds`, `llmtee_time_to_first_token_seconds`, `llmtee_budget_rejections_total`, `llmtee_events_dropped_total`, `llmtee_db_write_errors_total` and more. Send `Authorization: Bearer <admin password>` or use an authenticated UI session.
-- **Health** at `/healthz`: always `200` while the proxy runs, with only `{"status":"ok"}` in the body.
-- **MCP** at `/mcp` (streamable HTTP, `Authorization: Bearer <admin password>`): tools `get_spend`, `list_requests` and `get_request`. For example, with Claude Code:
+- **Web UI** at `/`: spend today and this month compared with the previous period, a cost chart that can be split by model, key, user or upstream, budget meters, a filterable request list and request details with bodies. The pages are rendered on the server with Go templates and htmx.
+- **CSV export**: the *Export CSV* button exports the current filter, or run `llmtee export --range 30d > requests.csv`.
+- **Prometheus** at `/metrics`: request, token and cost counters, request duration, time to first token, budget rejections and dropped events. Send `Authorization: Bearer <admin password>`.
+- **Health** at `/healthz`: returns `200` with `{"status":"ok"}` while the proxy runs.
+- **MCP** at `/mcp` (streamable HTTP, `Authorization: Bearer <admin password>`): tools `get_spend`, `list_requests` and `get_request`. To add it to Claude Code:
 
   ```sh
   claude mcp add --transport http llmtee http://localhost:8080/mcp --header "Authorization: Bearer $LLMTEE_ADMIN_PASSWORD"
   ```
-
-## Running several instances
-
-With PostgreSQL several llmtee instances can share one database. Budget counters stay in memory per instance and are re-read from the database every 10 seconds, so a key can overshoot its budget by what the instances spend within that window. With SQLite, run a single instance.
 
 ## Compared to
 
@@ -174,18 +127,17 @@ With PostgreSQL several llmtee instances can share one database. Budget counters
 | Integration | base URL | base URL | SDK / OpenTelemetry | base URL |
 | Services to run | 1 binary (+ optional Postgres) | several containers | web, worker, Postgres, ClickHouse, Redis, S3 | proxy + Postgres for spend tracking |
 | Hard budgets per key | yes | cost-based rate-limit policies via headers | no | yes |
-| Status | active | maintenance mode since March 2026 | active | active |
+| Status | active | [maintenance mode](https://www.mintlify.com/blog/mintlify-acquires-helicone) since March 2026 | active | active |
 | Scope | logging, cost, budgets | logging, analytics | tracing, evals, prompts | gateway: 100+ providers, routing, fallbacks |
 
-llmtee covers logging, cost and budgets. For evals, prompt management, routing or fallbacks, use one of the others.
+If you need evals, prompt management, routing or fallbacks, use one of the others. Moving from Helicone is covered in [docs/migrating-from-helicone.md](docs/migrating-from-helicone.md).
 
 ## Limits
 
-- No evals, prompt management, playground, response caching, load balancing, fallbacks, SSO or multi-tenancy. These are left out on purpose: if a feature would need a second service, llmtee skips it or offers an export instead.
-- Native Gemini, Azure OpenAI and AWS Bedrock APIs are not supported yet (OpenAI-compatible endpoints of these providers work).
-- Token counts come from the provider's response. Responses without usage are marked, not estimated.
-- Costs are as accurate as the price table. Batch, flex and priority pricing tiers are not modelled.
-- The proxy is in the request path. If it is down, your LLM calls fail. Monitor `/healthz` and keep the direct base URL at hand as a fallback.
+- llmtee has no evals, prompt management, playground, response caching, load balancing, fallbacks, SSO or multi-tenancy. These are left out on purpose. If a feature would need a second service, llmtee skips it or offers an export instead.
+- The native Gemini, Azure OpenAI and AWS Bedrock APIs are not supported yet. Their OpenAI-compatible endpoints work.
+- Token counts come from the provider's response. llmtee marks responses without usage and does not estimate them.
+- Costs are as accurate as the price table. llmtee does not model batch, flex or priority pricing.
 
 ## Development
 
@@ -197,7 +149,7 @@ make loadtest      # added latency vs. a fake upstream (needs vegeta)
 make prices        # refresh the embedded price table
 ```
 
-Golden tests replay recorded OpenAI and Anthropic streams through the proxy and require byte-identical output; `scripts/record-golden.sh` re-records them from the real APIs. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`scripts/record-golden.sh` re-records the golden streams from the real APIs. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
