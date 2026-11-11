@@ -17,8 +17,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v8
         with:
-          # v2.15.0's linux-amd64 release asset returns HTTP 504; see #1.
-          version: v2.14.0
+          version: latest
 
   test:
     name: test (${{ matrix.db }})
