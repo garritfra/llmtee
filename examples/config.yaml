@@ -1,5 +1,5 @@
 # llmtee --config examples/config.yaml   (or LLMTEE_CONFIG=...)
-# Every key can also be set via environment variables (they win), see README.
+# Every key can also be set via environment variables (they win), see docs/configuration.md.
 # ${VAR} references are expanded from the environment.
 listen: ":8080"
 database_url: "sqlite:///data/llmtee.db"   # or postgres://user:pass@host/db
