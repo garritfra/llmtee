@@ -234,6 +234,26 @@ func get(mux *http.ServeMux, url string) (int, string) {
 	return w.Code, w.Body.String()
 }
 
+func TestVersionedAssets(t *testing.T) {
+	_, mux := newTestUI(t)
+	_, body := get(mux, "/")
+	css := assetURL("style.css")
+	if len(assetVersions["style.css"]) != 12 || !strings.Contains(body, `href="`+css+`"`) {
+		t.Fatalf("page does not link %s", css)
+	}
+	for url, want := range map[string]string{
+		css:                         "public, max-age=31536000, immutable",
+		"/static/style.css?v=stale": "no-cache",
+		"/static/style.css":         "no-cache",
+	} {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, url, nil))
+		if got := w.Header().Get("Cache-Control"); w.Code != 200 || got != want {
+			t.Errorf("%s: %d %q, want %q", url, w.Code, got, want)
+		}
+	}
+}
+
 func TestOverviewEmptyStates(t *testing.T) {
 	s, mux := newTestUI(t)
 	if code, body := get(mux, "/"); code != 200 || !strings.Contains(body, "No requests yet") {

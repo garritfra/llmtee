@@ -40,6 +40,29 @@ var templateFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
+// assetVersions maps static file names to a short content hash. Asset URLs
+// carry it as ?v=, so browsers fetch new files right after an upgrade.
+var assetVersions = func() map[string]string {
+	m := map[string]string{}
+	_ = fs.WalkDir(staticFS, "static", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := staticFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(b)
+		m[strings.TrimPrefix(p, "static/")] = hex.EncodeToString(sum[:6])
+		return nil
+	})
+	return m
+}()
+
+func assetURL(name string) string {
+	return "/static/" + name + "?v=" + assetVersions[name]
+}
+
 // Version is shown in the footer.
 var Version = "dev"
 
@@ -104,6 +127,7 @@ func New(cfg *config.Config, s store.Store, kc *keys.Cache, b *budget.Tracker) (
 		"query":    func(v url.Values) template.URL { return template.URL(v.Encode()) },
 		"with":     withParam,
 		"version":  func() string { return Version },
+		"asset":    assetURL,
 		"readonly": func() bool { return cfg.ReadOnly },
 		"uiauth":   func() bool { return cfg.UIAuth },
 		"isErr":    func(r *store.Request) bool { return r.Status >= 400 || r.Error != "" },
@@ -158,7 +182,11 @@ func (u *UI) Register(mux *http.ServeMux) {
 
 func cacheStatic(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=3600")
+		if v := r.URL.Query().Get("v"); v != "" && v == assetVersions[r.URL.Path] {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		h.ServeHTTP(w, r)
 	})
 }
