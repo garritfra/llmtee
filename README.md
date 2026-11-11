@@ -1,6 +1,6 @@
 # llmtee
 
-**See what your LLM calls cost. One binary, one file, change the base URL, done.**
+**See what your LLM calls cost.** llmtee is a single binary with a single database file, and the only change on your side is the base URL.
 
 llmtee is a self-hosted proxy for the OpenAI and Anthropic APIs (and anything OpenAI-compatible: OpenRouter, Ollama, vLLM, Groq, …). Point your client's base URL at it and every request is logged with tokens, cost, latency and time-to-first-token. Per-key budgets act as an emergency brake and answer with HTTP 429 once a key has spent its daily or monthly limit.
 
@@ -8,12 +8,12 @@ Like the Unix `tee`, it passes every stream through to your client unchanged and
 
 ![llmtee overview](docs/screenshot-overview.png)
 
-- **Zero code changes.** It is a proxy, not an SDK. Works with every client that lets you set a base URL: OpenAI and Anthropic SDKs, Claude Code, Codex, automation tools.
-- **Zero infrastructure.** A single Go binary with SQLite in WAL mode; backup is copying a file. PostgreSQL is supported if you already run one.
-- **Budgets that actually stop spending.** Hard limits per key and day/month, enforced before the request reaches the provider.
-- **Local and cloud in one place.** Ollama, vLLM and OpenRouter show up next to OpenAI and Anthropic.
-- **Helicone-compatible headers.** Reads `Helicone-User-Id`, `Helicone-Session-Id` and `Helicone-Property-*`, so existing clients keep working ([migration guide](docs/migrating-from-helicone.md)).
-- **No lock-in.** CSV export, Prometheus metrics, and an MCP server so agents can query their own spend.
+- No SDK to install. Any client that lets you set a base URL works, including the OpenAI and Anthropic SDKs, Claude Code, Codex and automation tools.
+- It runs as one Go binary on SQLite in WAL mode, so a backup is a file copy. If you already run PostgreSQL, you can use that instead.
+- Budgets are hard limits per key, per day or month. llmtee checks them before the request reaches the provider.
+- Ollama, vLLM and OpenRouter traffic shows up next to OpenAI and Anthropic.
+- llmtee reads `Helicone-User-Id`, `Helicone-Session-Id` and `Helicone-Property-*`, so clients set up for Helicone keep working ([migration guide](docs/migrating-from-helicone.md)).
+- You can get your data out through CSV export, Prometheus metrics, or the MCP server, which also lets agents query their own spend.
 
 ## Quickstart
 
@@ -35,7 +35,7 @@ client = OpenAI(base_url="http://localhost:8080/openai/v1")   # api_key from OPE
 client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "user", "content": "hi"}])
 ```
 
-Open <http://localhost:8080> and sign in with the admin password. The request is there, with tokens and cost.
+Open <http://localhost:8080> and sign in with the admin password. The request appears in the list with its tokens and cost.
 
 Without Docker: download a binary from the [releases](https://github.com/garritfra/llmtee/releases) (Linux, macOS, Windows; amd64 and arm64) and run `LLMTEE_ADMIN_PASSWORD=change-me ./llmtee`. It creates `llmtee.db` in the current directory.
 
@@ -149,7 +149,7 @@ Upstream names in `LLMTEE_UPSTREAM_<NAME>` must not contain underscores. Setting
 
 ## Privacy
 
-Body logging is **on** by default with 30-day retention, because seeing the exact request is half the point. Bodies can contain personal or confidential data. Turn it off globally (`LLMTEE_LOG_BODIES=false`), per upstream, or per request with `Llmtee-Omit-*` headers, and use `LLMTEE_REDACT_FIELDS` for fields you never want stored. Provider keys are never written to the database; only SHA-256 hashes are. llmtee sends no telemetry.
+Body logging is on by default with 30-day retention, so you can inspect the exact prompt and response behind each cost. Bodies can contain personal or confidential data. Turn it off globally (`LLMTEE_LOG_BODIES=false`), per upstream, or per request with `Llmtee-Omit-*` headers, and use `LLMTEE_REDACT_FIELDS` for fields you never want stored. Provider keys are never written to the database; only SHA-256 hashes are. llmtee sends no telemetry.
 
 ## UI, export, metrics, MCP
 
@@ -177,11 +177,11 @@ With PostgreSQL several llmtee instances can share one database. Budget counters
 | Status | active | maintenance mode since March 2026 | active | active |
 | Scope | logging, cost, budgets | logging, analytics | tracing, evals, prompts | gateway: 100+ providers, routing, fallbacks |
 
-llmtee does one thing. If you need evals, prompt management, routing or fallbacks, use one of the others.
+llmtee covers logging, cost and budgets. For evals, prompt management, routing or fallbacks, use one of the others.
 
-## Limits (on purpose)
+## Limits
 
-- No evals, prompt management, playground, response caching, load balancing, fallbacks, SSO or multi-tenancy. Rule of thumb: if a feature needs a second service, the answer is no or an export.
+- No evals, prompt management, playground, response caching, load balancing, fallbacks, SSO or multi-tenancy. These are left out on purpose: if a feature would need a second service, llmtee skips it or offers an export instead.
 - Native Gemini, Azure OpenAI and AWS Bedrock APIs are not supported yet (OpenAI-compatible endpoints of these providers work).
 - Token counts come from the provider's response. Responses without usage are marked, not estimated.
 - Costs are as accurate as the price table. Batch, flex and priority pricing tiers are not modelled.
