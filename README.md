@@ -78,7 +78,7 @@ Only routing, the in-memory key and budget check, and forwarding happen while th
 
 Pricing, budget updates, metrics and database writes run in the background, in batches every 500 ms or 100 events. If the database is slow or unavailable, llmtee still forwards requests. It drops the log events and counts them in `llmtee_events_dropped_total`.
 
-On an Apple M4 Pro at 200 requests per second against a local fake upstream, llmtee added 0.14 ms at p50 and 0.02 ms at p99, and used about 33 MB of memory. You can reproduce this with `make loadtest`.
+We measured the overhead with `make loadtest` on an Apple M4 Pro, against a fake upstream on the same machine. Over four 20-second runs at 200 and 1,000 requests per second, llmtee added 0.1 to 0.3 ms at p50 and at most 1.3 ms at p99. The proxy used 35 to 45 MB of memory. Real providers take hundreds of milliseconds to answer, so the proxy's share of total latency is small.
 
 The tradeoff is that llmtee sits in the request path. If it is down, your LLM calls fail. Monitor `/healthz` and keep the provider's direct base URL at hand as a fallback.
 
