@@ -1,0 +1,23 @@
+{{define "content"}}
+<div class="head"><h1>Setup</h1></div>
+<p class="note">Base URL: <code>{{.BaseURL}}</code>.{{if not .PublicURLSet}} It comes from the address of this page. If clients reach llmtee at a different address, set <code>LLMTEE_PUBLIC_URL</code>.{{end}}</p>
+
+<section class="card">
+  <h2>Endpoints</h2>
+  <table>
+    <thead><tr><th>Upstream</th><th>Format</th><th>Client base URL</th><th>Forwards to</th><th>Provider key in llmtee</th></tr></thead>
+    <tbody>
+    {{range .Endpoints}}
+    <tr>
+      <td>{{.Name}}</td><td>{{.Type}}</td><td class="mono">{{.URL}}</td><td class="mono small muted">{{.Upstream}}</td>
+      <td>{{if .ManagedKey}}set{{else}}<span class="muted">—</span>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+
+<section class="card doc">
+{{.Guide}}
+</section>
+{{end}}

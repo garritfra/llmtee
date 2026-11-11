@@ -29,7 +29,7 @@
     </div>
   </div>
   {{if .FirstRun}}
-  <p class="muted empty">No requests yet. Point a client at <code>http://&lt;host&gt;:8080/openai/v1</code> or <code>/anthropic</code>.</p>
+  <p class="muted empty">No requests yet. Point a client at <code>{{.BaseURL}}/openai/v1</code> or <code>{{.BaseURL}}/anthropic</code>. <a href="/setup">Set up your agents</a></p>
   {{else if not .Total.Requests}}
   <p class="muted empty">No requests in the {{.RangeLabel}}.{{if ne .Range "all"}} <a href="{{.AllURL}}">Show all time</a>{{end}}</p>
   {{else}}

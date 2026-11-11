@@ -84,4 +84,15 @@ alerts:
 	if err := bad.applyEnv([]string{"LLMTEE_LOG_BODIES=maybe"}); err == nil {
 		t.Error("invalid bool accepted")
 	}
+	for in, want := range map[string]string{"https://llm.example.com/": "https://llm.example.com", "http://box:8080": "http://box:8080", "llm.example.com": "", "ftp://x": ""} {
+		c := Defaults()
+		c.PublicURL = in
+		err := c.finish()
+		if want == "" && err == nil {
+			t.Errorf("public_url %q accepted", in)
+		}
+		if want != "" && (err != nil || c.PublicURL != want) {
+			t.Errorf("public_url %q = %q, %v", in, c.PublicURL, err)
+		}
+	}
 }

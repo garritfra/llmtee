@@ -11,6 +11,7 @@ llmtee reads its settings from environment variables. A YAML file (`--config` or
 | `LLMTEE_ADMIN_PASSWORD` | random, printed at startup | UI login, and bearer token for `/metrics` and `/mcp` |
 | `LLMTEE_UI_AUTH` | `true` | `false` if a reverse proxy already authenticates |
 | `LLMTEE_READ_ONLY` | `false` | read-only UI (demo instances) |
+| `LLMTEE_PUBLIC_URL` | address of the UI page | URL clients use to reach llmtee, shown on the Setup page, e.g. `https://llm.example.com` |
 | `LLMTEE_REQUIRE_PROXY_KEY` | `false` | reject requests without a valid llmtee key |
 | `LLMTEE_LOG_BODIES` | `true` | store request and response bodies (zstd-compressed) |
 | `LLMTEE_BODY_RETENTION_DAYS` | `30` | delete bodies after N days (0 = never) |

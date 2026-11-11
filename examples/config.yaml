@@ -6,6 +6,7 @@ database_url: "sqlite:///data/llmtee.db"   # or postgres://user:pass@host/db
 admin_password: "${LLMTEE_ADMIN_PASSWORD}"
 ui_auth: true              # false if a reverse proxy already authenticates
 require_proxy_key: false   # true: reject requests without a llmtee key
+# public_url: https://llm.example.com   # shown on the Setup page; default: address of the page
 
 log_bodies: true
 body_retention_days: 30

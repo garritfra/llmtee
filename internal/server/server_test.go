@@ -118,11 +118,14 @@ func TestEndToEnd(t *testing.T) {
 	}
 	resp, _ = ui.PostForm(hs.URL+"/login", url.Values{"password": {"pw"}, "next": {"/requests"}})
 	resp.Body.Close()
-	for _, p := range []string{"/", "/?range=all", "/requests", "/requests?model=gpt-4o-mini-2024-07-18&status=ok", "/requests/" + oa.ID, "/keys"} {
+	for _, p := range []string{"/", "/?range=all", "/requests", "/requests?model=gpt-4o-mini-2024-07-18&status=ok", "/requests/" + oa.ID, "/keys", "/setup"} {
 		code, body := get(t, ui, hs.URL+p)
 		if code != 200 || strings.Contains(body, "template error") {
 			t.Errorf("GET %s = %d", p, code)
 		}
+	}
+	if _, body := get(t, ui, hs.URL+"/setup"); !strings.Contains(body, "ANTHROPIC_BASE_URL="+hs.URL+"/anthropic") {
+		t.Error("setup page misses the base URL")
 	}
 	_, body := get(t, ui, hs.URL+"/requests/"+oa.ID)
 	if !strings.Contains(body, "include_usage") || !strings.Contains(body, "feature") {

@@ -32,7 +32,7 @@ Send any request, then open <http://localhost:8080> and sign in with the admin p
 
 Without Docker, download a binary from the [releases](https://github.com/garritfra/llmtee/releases) (Linux, macOS and Windows on amd64 and arm64) and run `LLMTEE_ADMIN_PASSWORD=change-me ./llmtee`. llmtee creates `llmtee.db` in the current directory.
 
-Other setups: [docker-compose.yml](docker-compose.yml), [PostgreSQL compose](deploy/docker-compose.postgres.yml), [systemd unit](deploy/systemd/llmtee.service), [Caddy with TLS](deploy/caddy/Caddyfile). Client-specific guides for the SDKs, Claude Code, Codex, Ollama, OpenRouter, vLLM and n8n are in [docs/integrations.md](docs/integrations.md).
+Other setups: [docker-compose.yml](docker-compose.yml), [PostgreSQL compose](deploy/docker-compose.postgres.yml), [systemd unit](deploy/systemd/llmtee.service), [Caddy with TLS](deploy/caddy/Caddyfile). The *Setup* page in the web UI shows how to connect Claude Code, Codex, opencode and Pi, with your instance's base URL filled in. Guides for these agents, the SDKs, Ollama, OpenRouter, vLLM and n8n are in [docs/integrations.md](docs/integrations.md).
 
 ## Endpoints
 
@@ -97,6 +97,7 @@ llmtee reads its settings from environment variables or a YAML file. The setting
 | `DATABASE_URL` | `sqlite://llmtee.db` | `sqlite://path` or `postgres://…` |
 | `LLMTEE_ADMIN_PASSWORD` | random, printed at startup | UI login, and bearer token for `/metrics` and `/mcp` |
 | `LLMTEE_UPSTREAM_<NAME>` | | add an upstream at `/u/<name>/` |
+| `LLMTEE_PUBLIC_URL` | address of the UI page | base URL shown in the setup instructions |
 | `LLMTEE_LOG_BODIES` | `true` | store request and response bodies |
 | `LLMTEE_ALERT_WEBHOOK_URL` | | POST a JSON alert when a budget threshold is crossed |
 

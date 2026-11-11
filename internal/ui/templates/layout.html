@@ -16,6 +16,7 @@
     <a href="/" {{if eq .Path "/"}}class="active"{{end}}>Overview</a>
     <a href="/requests" {{if eq .Path "/requests"}}class="active"{{end}}>Requests</a>
     <a href="/keys" {{if eq .Path "/keys"}}class="active"{{end}}>Keys</a>
+    <a href="/setup" {{if eq .Path "/setup"}}class="active"{{end}}>Setup</a>
   </nav>
   <div class="spacer"></div>
   {{if readonly}}<span class="pill">read-only demo</span>{{end}}

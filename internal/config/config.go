@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -48,6 +49,9 @@ type Config struct {
 	UIAuth bool `yaml:"ui_auth"`
 	// ReadOnly turns the UI into a read-only demo (no key management).
 	ReadOnly bool `yaml:"read_only"`
+	// PublicURL is the address clients use to reach llmtee, shown in the
+	// setup instructions. Empty: derived from the incoming request.
+	PublicURL string `yaml:"public_url"`
 
 	RequireProxyKey   bool     `yaml:"require_proxy_key"`
 	LogBodies         bool     `yaml:"log_bodies"`
@@ -160,6 +164,7 @@ func (c *Config) applyEnv(environ []string) error {
 	str("LLMTEE_ADMIN_PASSWORD", &c.AdminPassword)
 	boolean("LLMTEE_UI_AUTH", &c.UIAuth)
 	boolean("LLMTEE_READ_ONLY", &c.ReadOnly)
+	str("LLMTEE_PUBLIC_URL", &c.PublicURL)
 	boolean("LLMTEE_REQUIRE_PROXY_KEY", &c.RequireProxyKey)
 	boolean("LLMTEE_LOG_BODIES", &c.LogBodies)
 	boolean("LLMTEE_INJECT_STREAM_USAGE", &c.InjectStreamUsage)
@@ -277,6 +282,13 @@ func (c *Config) finish() error {
 		if u.Name == "" || strings.ContainsAny(u.Name, "/ ") {
 			return fmt.Errorf("upstream name %q invalid", u.Name)
 		}
+	}
+	if c.PublicURL != "" {
+		pu, err := url.Parse(c.PublicURL)
+		if err != nil || (pu.Scheme != "http" && pu.Scheme != "https") || pu.Host == "" {
+			return fmt.Errorf("public_url %q: want http(s)://host[:port][/path]", c.PublicURL)
+		}
+		c.PublicURL = strings.TrimSuffix(c.PublicURL, "/")
 	}
 	if c.QueueSize <= 0 {
 		c.QueueSize = 10000
