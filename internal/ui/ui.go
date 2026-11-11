@@ -99,7 +99,7 @@ func New(cfg *config.Config, s store.Store, kc *keys.Cache, b *budget.Tracker) (
 		"ts":       func(r *store.Request) string { return r.Time().UTC().Format("2006-01-02 15:04:05") },
 		"ago":      ago,
 		"keyname":  u.keyName,
-		"pct":      pct,
+		"share":    share,
 		"pretty":   pretty,
 		"query":    func(v url.Values) template.URL { return template.URL(v.Encode()) },
 		"with":     withParam,
@@ -330,33 +330,43 @@ func (u *UI) keyName(id string) string {
 
 // ---- overview ----
 
+// ranges are the selectable time windows. Each is N whole buckets ending
+// with the current one (UTC), so charts never start with a partial bucket
+// and tiles, chart and request list cover the same window.
 var ranges = []struct {
 	Key, Label string
-	Dur        time.Duration
+	Unit       time.Duration
+	N          int
 }{
-	{"24h", "24 hours", 24 * time.Hour},
-	{"7d", "7 days", 7 * 24 * time.Hour},
-	{"30d", "30 days", 30 * 24 * time.Hour},
-	{"90d", "90 days", 90 * 24 * time.Hour},
+	{"24h", "24 hours", hour, 24},
+	{"7d", "7 days", day, 7},
+	{"30d", "30 days", day, 30},
+	{"90d", "90 days", day, 90},
 }
 
-func sinceFor(key string, now time.Time) (int64, string) {
-	for _, rg := range ranges {
-		if rg.Key == key {
-			return now.Add(-rg.Dur).UnixMilli(), key
+// sinceFor returns the start of the window (0 for all time), the
+// normalized range key and the chart bucket size.
+func sinceFor(key string, now time.Time) (int64, string, time.Duration) {
+	if key == "all" {
+		return 0, "all", day
+	}
+	rg := ranges[1]
+	for _, r := range ranges {
+		if r.Key == key {
+			rg = r
 		}
 	}
-	if key == "all" {
-		return 0, "all"
-	}
-	return now.Add(-7 * 24 * time.Hour).UnixMilli(), "7d"
+	start := bucketStart(now, rg.Unit).Add(-time.Duration(rg.N-1) * rg.Unit)
+	return start.UnixMilli(), rg.Key, rg.Unit
 }
 
-type bar struct {
-	Label  string
-	Cost   float64
-	Height float64
-	Reqs   int64
+func rangeLabel(key string) string {
+	for _, r := range ranges {
+		if r.Key == key {
+			return "last " + r.Label
+		}
+	}
+	return "all time"
 }
 
 func (u *UI) overview(w http.ResponseWriter, r *http.Request) {
@@ -366,59 +376,115 @@ func (u *UI) overview(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	now := time.Now()
-	since, rng := sinceFor(r.URL.Query().Get("range"), now)
+	q := r.URL.Query()
+	since, rng, unit := sinceFor(q.Get("range"), now)
+	split, _ := splitFor(q.Get("split"))
 	f := store.Filter{Since: since}
 
+	spend := func(f store.Filter) (store.SpendRow, error) {
+		rows, err := u.store.Spend(ctx, f, store.ByNone)
+		return first(rows), err
+	}
 	dayStart, monthStart := budget.Starts(now)
-	today, err := u.store.Spend(ctx, store.Filter{Since: dayStart}, store.ByNone)
-	if err != nil {
+	today, err1 := spend(store.Filter{Since: dayStart})
+	month, err2 := spend(store.Filter{Since: monthStart})
+	total, err3 := spend(f)
+	if err := errors.Join(err1, err2, err3); err != nil {
 		u.fail(w, r, 500, err)
 		return
 	}
-	month, err := u.store.Spend(ctx, store.Filter{Since: monthStart}, store.ByNone)
-	if err != nil {
-		u.fail(w, r, 500, err)
-		return
-	}
-	total, err := u.store.Spend(ctx, f, store.ByNone)
-	if err != nil {
-		u.fail(w, r, 500, err)
-		return
-	}
-	days, err := u.store.Spend(ctx, f, store.ByDay)
-	if err != nil {
-		u.fail(w, r, 500, err)
-		return
-	}
-	group := func(g string) []store.SpendRow {
-		rows, err := u.store.Spend(ctx, store.Filter{Since: since, Limit: 10}, g)
-		if err != nil {
-			slog.Warn("spend query", "group", g, "err", err)
+	var cmp delta
+	if since > 0 {
+		prevStart := since - (now.UnixMilli() - since)
+		if prev, err := spend(store.Filter{Since: prevStart, Until: since}); err == nil {
+			cmp = compare(total.CostUSD, prev.CostUSD, time.UnixMilli(prevStart))
 		}
-		return rows
 	}
 
-	// Fill missing days so the chart has a continuous axis.
-	var bars []bar
-	byDay := map[string]store.SpendRow{}
-	for _, d := range days {
-		byDay[d.Group] = d
-	}
-	start := time.UnixMilli(since).UTC()
-	if since == 0 && len(days) > 0 {
-		start, _ = time.Parse("2006-01-02", days[0].Group)
-	}
-	maxCost := 0.0
-	for d := start.Truncate(24 * time.Hour); !d.After(now.UTC()) && len(bars) < 400; d = d.Add(24 * time.Hour) {
-		key := d.Format("2006-01-02")
-		row := byDay[key]
-		bars = append(bars, bar{Label: key, Cost: row.CostUSD, Reqs: row.Requests})
-		maxCost = math.Max(maxCost, row.CostUSD)
-	}
-	for i := range bars {
-		if maxCost > 0 {
-			bars[i].Height = math.Max(bars[i].Cost/maxCost*100, 0.5)
+	const topN = 10
+	top := map[string][]store.SpendRow{}
+	for _, s := range splits[1:] {
+		rows, err := u.store.Spend(ctx, store.Filter{Since: since, Limit: topN}, s.Key)
+		if err != nil {
+			slog.Warn("spend query", "group", s.Key, "err", err)
 		}
+		top[s.Key] = rows
+	}
+	name := func(dim string) func(string) string {
+		return func(g string) string {
+			switch {
+			case g == "":
+				return "(not set)"
+			case dim == store.ByKey:
+				return u.keyName(g)
+			}
+			return g
+		}
+	}
+	link := func(param string) func(string) string {
+		return func(g string) string {
+			if g == "" {
+				return ""
+			}
+			return "/requests?" + url.Values{"range": {rng}, param: {g}}.Encode()
+		}
+	}
+
+	// Chart: weekly buckets for long all-time ranges, merged from days.
+	var keep []string
+	colors := map[string]string{}
+	splitParam := ""
+	if split != "" {
+		_, splitParam = splitFor(split)
+		keep = append([]string{}, chartKeep(top[split])...)
+		for i, g := range keep {
+			colors[g] = seriesColor(i, false)
+		}
+	}
+	rows, err := u.store.Series(ctx, f, unit.Milliseconds(), split, keep)
+	if err != nil {
+		slog.Warn("series query", "err", err)
+	}
+	var ch chart
+	start := time.UnixMilli(since)
+	if since == 0 && len(rows) > 0 {
+		start = time.UnixMilli(rows[0].Start)
+		if now.Sub(start) > 120*day {
+			unit = week
+		}
+	}
+	if since > 0 || len(rows) > 0 {
+		ch = buildChart(rows, keep, start, now, unit, name(split), link(splitParam))
+	}
+
+	var breakdowns []breakdown
+	for _, s := range splits[1:] {
+		var c map[string]string
+		if s.Key == split {
+			c = colors
+		}
+		b := newBreakdown("By "+strings.ToLower(s.Label), s.Key, top[s.Key], topN, total, name(s.Key), link(s.Param), c)
+		b.Active = s.Key == split
+		b.SplitURL = overviewURL(rng, s.Key) + "#cost"
+		breakdowns = append(breakdowns, b)
+	}
+
+	type option struct {
+		Label, URL string
+		On         bool
+	}
+	var rangeOpts, splitOpts []option
+	for _, rg := range ranges {
+		rangeOpts = append(rangeOpts, option{rg.Key, overviewURL(rg.Key, split), rg.Key == rng})
+	}
+	rangeOpts = append(rangeOpts, option{"all", overviewURL("all", split), rng == "all"})
+	for _, s := range splits {
+		splitOpts = append(splitOpts, option{s.Label, overviewURL(rng, s.Key) + "#cost", s.Key == split})
+	}
+	firstRun := false
+	if total.Requests == 0 {
+		latest, _ := u.store.ListRequests(ctx, store.Filter{Limit: 1})
+		firstRun = len(latest) == 0
 	}
 
 	type budgetRow struct {
@@ -444,12 +510,15 @@ func (u *UI) overview(w http.ResponseWriter, r *http.Request) {
 		budgets = append(budgets, br)
 	}
 
+	errRate := ""
+	if total.Requests > 0 {
+		errRate = strconv.FormatFloat(float64(total.Errors)/float64(total.Requests)*100, 'f', 1, 64)
+	}
 	u.render(w, r, "overview", map[string]any{
-		"Range": rng, "Ranges": ranges, "Since": since,
-		"Today": first(today), "Month": first(month), "Total": first(total),
-		"Bars": bars, "MaxCost": maxCost,
-		"ByModel": group(store.ByModel), "ByKey": group(store.ByKey), "ByUser": group(store.ByUser),
-		"ByUpstream": group(store.ByUpstream), "Budgets": budgets,
+		"Range": rng, "RangeLabel": rangeLabel(rng), "RangeOpts": rangeOpts, "SplitOpts": splitOpts,
+		"Today": today, "Month": month, "Total": total, "Delta": cmp, "ErrRate": errRate,
+		"Chart": ch, "Breakdowns": breakdowns, "Budgets": budgets, "FirstRun": firstRun,
+		"AllURL": overviewURL("all", split),
 	})
 }
 
@@ -471,7 +540,7 @@ func errString(err error) string {
 
 // FilterFromQuery parses list filters from URL parameters.
 func FilterFromQuery(q url.Values, now time.Time) (store.Filter, string) {
-	since, rng := sinceFor(q.Get("range"), now)
+	since, rng, _ := sinceFor(q.Get("range"), now)
 	if q.Get("range") == "" && q.Get("session") != "" {
 		since, rng = 0, "all"
 	}
@@ -832,11 +901,13 @@ func ago(r *store.Request) string {
 	return r.Time().UTC().Format("Jan 2")
 }
 
-func pct(part, whole float64) string {
-	if whole <= 0 {
-		return "0"
+// share formats a percentage without implying more precision than a
+// dashboard needs; small non-zero shares stay visible as "<1%".
+func share(p float64) string {
+	if p > 0 && p < 1 {
+		return "<1%"
 	}
-	return strconv.FormatFloat(math.Min(part/whole*100, 100), 'f', 1, 64)
+	return strconv.FormatFloat(math.Round(p), 'f', 0, 64) + "%"
 }
 
 // pretty indents JSON bodies; SSE and other text is returned unchanged.

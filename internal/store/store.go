@@ -78,6 +78,15 @@ type SpendRow struct {
 	Errors    int64
 }
 
+// SeriesRow is the spend of one group in one time bucket.
+type SeriesRow struct {
+	Start    int64 // bucket start, unix ms
+	Group    string
+	Other    bool // merged groups that were not in the keep list
+	Requests int64
+	CostUSD  float64
+}
+
 // Key is a proxy key or a labeled passthrough key.
 type Key struct {
 	ID             string
@@ -103,6 +112,10 @@ type Store interface {
 	ListRequests(ctx context.Context, f Filter) ([]*Request, error)
 	GetRequest(ctx context.Context, id string, withBodies bool) (*Request, error)
 	Spend(ctx context.Context, f Filter, groupBy string) ([]SpendRow, error)
+	// Series buckets spend by time (buckets of bucketMS, aligned to the
+	// Unix epoch) and optionally by a dimension. With keep set, groups not
+	// in keep are merged into one row per bucket with Other set.
+	Series(ctx context.Context, f Filter, bucketMS int64, groupBy string, keep []string) ([]SeriesRow, error)
 	BudgetSpend(ctx context.Context, dayStart, monthStart int64) (map[string]KeySpend, KeySpend, error)
 	Distinct(ctx context.Context, column string, since int64) ([]string, error)
 

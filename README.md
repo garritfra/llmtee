@@ -153,7 +153,7 @@ Body logging is **on** by default with 30-day retention, because seeing the exac
 
 ## UI, export, metrics, MCP
 
-- **Web UI** at `/`: spend today/this month, cost per day, breakdowns by model, key, user and upstream, budget meters, a filterable request list (upstream, model, key, user, session, status, property) and request details with bodies. Server-rendered with Go templates and htmx; no separate frontend.
+- **Web UI** at `/`: spend today/this month with a comparison to the prior period, a cost chart (hourly for 24 hours, daily or weekly for longer ranges, UTC) that can be split by model, key, user or upstream, breakdowns by the same dimensions, budget meters, a filterable request list (upstream, model, key, user, session, status, property) and request details with bodies. Server-rendered with Go templates and htmx; no separate frontend.
 - **CSV export**: the *Export CSV* button exports the current filter (`/export.csv`), or run `llmtee export --range 30d > requests.csv`.
 - **Prometheus** at `/metrics`: `llmtee_requests_total`, `llmtee_tokens_total`, `llmtee_cost_usd_total`, `llmtee_request_duration_seconds`, `llmtee_time_to_first_token_seconds`, `llmtee_budget_rejections_total`, `llmtee_events_dropped_total`, `llmtee_db_write_errors_total` and more. Send `Authorization: Bearer <admin password>` or use an authenticated UI session.
 - **Health** at `/healthz`: always `200` while the proxy runs, with only `{"status":"ok"}` in the body.
