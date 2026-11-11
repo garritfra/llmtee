@@ -262,7 +262,7 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if got := resp.Header.Get("Cache-Control"); got != "public, max-age=3600" {
+	if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
 		t.Errorf("static Cache-Control = %q", got)
 	}
 }

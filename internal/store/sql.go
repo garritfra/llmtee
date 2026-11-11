@@ -460,6 +460,49 @@ func (s *sqlStore) Spend(ctx context.Context, f Filter, groupBy string) ([]Spend
 	return out, rows.Err()
 }
 
+func (s *sqlStore) Series(ctx context.Context, f Filter, bucketMS int64, groupBy string, keep []string) ([]SeriesRow, error) {
+	if bucketMS <= 0 {
+		return nil, fmt.Errorf("invalid bucket %d", bucketMS)
+	}
+	bucket := "ts / " + strconv.FormatInt(bucketMS, 10)
+	var args []any
+	query := "SELECT " + bucket + ", ''"
+	group := " GROUP BY 1"
+	if groupBy != ByNone {
+		g, ok := groupExpr[groupBy]
+		if !ok || groupBy == ByDay {
+			return nil, fmt.Errorf("invalid group %q", groupBy)
+		}
+		if len(keep) > 0 {
+			g = "CASE WHEN " + g + " IN (" + strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",") + ") THEN " + g + " END"
+			for _, k := range keep {
+				args = append(args, k)
+			}
+		}
+		query = "SELECT " + bucket + ", " + g
+		group = " GROUP BY 1, 2"
+	}
+	w, wargs := where(f)
+	query += ", COUNT(*), COALESCE(SUM(cost_usd), 0) FROM requests" + w + group + " ORDER BY 1"
+	rows, err := s.db.QueryContext(ctx, s.q(query), append(args, wargs...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SeriesRow
+	for rows.Next() {
+		var r SeriesRow
+		var g sql.NullString
+		if err := rows.Scan(&r.Start, &g, &r.Requests, &r.CostUSD); err != nil {
+			return nil, err
+		}
+		r.Start *= bucketMS
+		r.Group, r.Other = g.String, !g.Valid
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 func (s *sqlStore) BudgetSpend(ctx context.Context, dayStart, monthStart int64) (map[string]KeySpend, KeySpend, error) {
 	rows, err := s.db.QueryContext(ctx, s.q(`SELECT COALESCE(key_id, ''),
 		COALESCE(SUM(CASE WHEN ts >= ? THEN cost_usd ELSE 0 END), 0), COALESCE(SUM(cost_usd), 0)

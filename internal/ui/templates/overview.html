@@ -1,9 +1,8 @@
 {{define "content"}}
 <div class="head">
   <h1>Overview</h1>
-  <div class="seg">
-    {{range .Ranges}}<a href="/?range={{.Key}}" {{if eq $.Range .Key}}class="on"{{end}}>{{.Key}}</a>{{end}}
-    <a href="/?range=all" {{if eq .Range "all"}}class="on"{{end}}>all</a>
+  <div class="seg" role="group" aria-label="Time range">
+    {{range .RangeOpts}}<a href="{{.URL}}" {{if .On}}class="on" aria-current="true"{{end}}>{{.Label}}</a>{{end}}
   </div>
 </div>
 {{if .LogBodies}}<p class="note">Request and response bodies are stored for {{if gt .BodyDays 0}}{{.BodyDays}} days{{else}}ever{{end}}. They can contain sensitive data. Set <code>LLMTEE_LOG_BODIES=false</code> to turn this off.</p>{{end}}
@@ -11,19 +10,70 @@
 <section class="tiles">
   <div class="tile"><div class="label">Spend today (UTC)</div><div class="value">{{usd .Today.CostUSD}}</div><div class="sub">{{num .Today.Requests}} requests</div></div>
   <div class="tile"><div class="label">Spend this month</div><div class="value">{{usd .Month.CostUSD}}</div><div class="sub">{{num .Month.Requests}} requests</div></div>
-  <div class="tile"><div class="label">Spend, {{.Range}}</div><div class="value">{{usd .Total.CostUSD}}</div><div class="sub">{{num .Total.Requests}} requests</div></div>
-  <div class="tile"><div class="label">Tokens, {{.Range}}</div><div class="value">{{num .Total.TokensIn}} <span class="muted">in</span></div><div class="sub">{{num .Total.TokensOut}} out · {{num .Total.CacheRead}} cached</div></div>
-  <div class="tile"><div class="label">Errors, {{.Range}}</div><div class="value">{{num .Total.Errors}}</div><div class="sub">{{if .Total.Unpriced}}<a href="/requests?range={{.Range}}">{{num .Total.Unpriced}} without known price</a>{{else}}all requests priced{{end}}</div></div>
+  <div class="tile"><div class="label">Spend, {{.RangeLabel}}</div><div class="value">{{usd .Total.CostUSD}}</div>
+    <div class="sub">{{num .Total.Requests}} requests</div>
+    {{with .Delta}}{{if .Show}}<div class="sub delta" title="Prior period of the same length, from {{.Since}}: {{usd .Prev}}">{{if .Arrow}}<span aria-hidden="true">{{.Arrow}}</span> {{end}}{{.Text}}</div>{{end}}{{end}}
+  </div>
+  <div class="tile"><div class="label">Tokens, {{.RangeLabel}}</div><div class="value">{{num .Total.TokensIn}} <span class="muted unit">in</span></div><div class="sub">{{num .Total.TokensOut}} out · {{num .Total.CacheRead}} cached</div></div>
+  <div class="tile"><div class="label">Errors, {{.RangeLabel}}</div><div class="value">{{num .Total.Errors}}</div><div class="sub">{{if .ErrRate}}{{.ErrRate}}% of requests{{else}}no requests{{end}}</div></div>
 </section>
 
-<section class="card">
-  <h2>Cost per day <span class="muted small">max {{usd .MaxCost}}</span></h2>
-  {{if .Bars}}
-  <div class="chart">
-    {{range .Bars}}<div class="col" title="{{.Label}}: {{usd .Cost}} · {{num .Reqs}} requests"><div class="bar" style="height: {{printf "%.1f" .Height}}%"></div></div>{{end}}
+<section class="card chart-card" id="cost">
+  <div class="card-head">
+    <h2>Cost per {{or .Chart.Unit "day"}} <span class="muted small">UTC</span></h2>
+    <div class="split">
+      <span class="muted small" id="split-label">Split by</span>
+      <div class="seg seg-sm" role="group" aria-labelledby="split-label">
+        {{range .SplitOpts}}<a href="{{.URL}}" {{if .On}}class="on" aria-current="true"{{end}}>{{.Label}}</a>{{end}}
+      </div>
+    </div>
   </div>
-  <div class="axis"><span>{{(index .Bars 0).Label}}</span><span>{{(index .Bars (len .Bars | add -1)).Label}}</span></div>
-  {{else}}<p class="muted">No requests yet. Point a client at <code>http://&lt;host&gt;:8080/openai/v1</code> or <code>/anthropic</code>.</p>{{end}}
+  {{if .FirstRun}}
+  <p class="muted empty">No requests yet. Point a client at <code>http://&lt;host&gt;:8080/openai/v1</code> or <code>/anthropic</code>.</p>
+  {{else if not .Total.Requests}}
+  <p class="muted empty">No requests in the {{.RangeLabel}}.{{if ne .Range "all"}} <a href="{{.AllURL}}">Show all time</a>{{end}}</p>
+  {{else}}
+  {{with .Chart}}
+  <div class="chart" role="img" aria-label="Cost per {{.Unit}}, see the data table below">
+    <div class="yaxis" aria-hidden="true">{{range .YTicks}}<span style="bottom: {{printf "%.2f" .Pos}}%">{{.Label}}</span>{{end}}</div>
+    <div class="plot">
+      {{range .YTicks}}<div class="gridline" style="bottom: {{printf "%.2f" .Pos}}%"></div>{{end}}
+      <div class="cols">
+        {{range .Cols}}<div class="col{{if .Partial}} partial{{end}}{{if .Flip}} flip{{end}}" tabindex="-1">
+          {{if .Cost}}<div class="stack" style="height: {{printf "%.2f" .Height}}%">{{range .Segs}}<div class="{{.Color}}" style="flex-grow: {{printf "%.3f" .Pct}}"></div>{{end}}</div>{{end}}
+          <div class="tip">
+            <div class="tip-title">{{.Label}}{{if .Partial}} <span class="muted">· so far</span>{{end}}</div>
+            <div class="tip-row"><span>Cost</span><b>{{usd .Cost}}</b></div>
+            <div class="tip-row muted"><span>Requests</span><span>{{num .Reqs}}</span></div>
+            {{if $.Chart.Split}}{{range .Segs}}<div class="tip-row"><span><i class="sw {{.Color}}"></i>{{.Name}}</span><span>{{usd .Cost}}</span></div>{{end}}{{end}}
+          </div>
+        </div>{{end}}
+      </div>
+    </div>
+    <div></div>
+    <div class="xaxis" aria-hidden="true">{{range .Cols}}<span>{{if .Tick}}<i class="{{if .Minor}}minor{{end}} {{.Edge}}">{{.Tick}}</i>{{end}}</span>{{end}}</div>
+  </div>
+  {{if .Split}}
+  <ul class="legend">
+    {{range .Series}}<li><i class="sw {{.Color}}"></i>{{if .URL}}<a href="{{.URL}}">{{.Name}}</a>{{else}}<span{{if .Other}} title="All other groups combined"{{end}}>{{.Name}}</span>{{end}} <span class="muted">{{usd .Cost}} · {{share .Share}}</span></li>{{end}}
+  </ul>
+  {{end}}
+  <details class="chart-data">
+    <summary>Show as table</summary>
+    <div class="scroll">
+    <table>
+      <thead><tr><th>Period (UTC)</th>{{if .Split}}{{range .Series}}<th class="num">{{.Name}}</th>{{end}}{{end}}<th class="num">Cost</th><th class="num">Requests</th></tr></thead>
+      <tbody>
+      {{range .Cols}}<tr><td>{{.Label}}{{if .Partial}} <span class="muted">(so far)</span>{{end}}</td>
+        {{if $.Chart.Split}}{{range .Values}}<td class="num">{{usd .}}</td>{{end}}{{end}}
+        <td class="num">{{usd .Cost}}</td><td class="num">{{num .Reqs}}</td></tr>{{end}}
+      </tbody>
+    </table>
+    </div>
+  </details>
+  {{end}}
+  {{if .Total.Unpriced}}<p class="note foot"><span class="warn-text">{{num .Total.Unpriced}} requests</span> have token usage but no known price and are not included in cost. <a href="/requests?range={{.Range}}">View requests</a></p>{{end}}
+  {{end}}
 </section>
 
 {{if .Budgets}}
@@ -47,33 +97,37 @@
 {{end}}
 
 <div class="grid2">
-  {{template "breakdown" (dict "Title" "By model" "Rows" .ByModel "Param" "model" "Range" .Range "Total" .Total.CostUSD "Kind" "")}}
-  {{template "breakdown" (dict "Title" "By key" "Rows" .ByKey "Param" "key" "Range" .Range "Total" .Total.CostUSD "Kind" "key")}}
-  {{template "breakdown" (dict "Title" "By user" "Rows" .ByUser "Param" "user" "Range" .Range "Total" .Total.CostUSD "Kind" "")}}
-  {{template "breakdown" (dict "Title" "By upstream" "Rows" .ByUpstream "Param" "upstream" "Range" .Range "Total" .Total.CostUSD "Kind" "")}}
+  {{range .Breakdowns}}{{template "breakdown" .}}{{end}}
 </div>
 {{end}}
 
 {{define "breakdown"}}
 <section class="card">
-  <h2>{{.Title}}</h2>
+  <div class="card-head">
+    <h2>{{.Title}}</h2>
+    {{if .Rows}}{{if .Active}}<span class="muted small">shown in chart</span>{{else}}<a class="small" href="{{.SplitURL}}">Split chart by this</a>{{end}}{{end}}
+  </div>
   {{if .Rows}}
   <table>
-    <thead><tr><th></th><th class="num">Cost</th><th class="num">Requests</th><th class="num">Tokens in/out</th></tr></thead>
+    <thead><tr><th></th><th class="num">Cost</th><th class="num">Share</th><th class="num">Requests</th><th class="num">Tokens in/out</th></tr></thead>
     <tbody>
-    {{range .Rows}}
-    <tr>
-      <td class="label-cell">
-        {{if .Group}}<a href="/requests?range={{$.Range}}&{{$.Param}}={{.Group}}">{{if eq $.Kind "key"}}{{keyname .Group}}{{else}}{{.Group}}{{end}}</a>{{else}}<span class="muted">(none)</span>{{end}}
-        <div class="share" style="width: {{pct .CostUSD $.Total}}%"></div>
-      </td>
-      <td class="num">{{usd .CostUSD}}{{if .Unpriced}} <span class="warn-text" title="{{.Unpriced}} requests without known price">*</span>{{end}}</td>
-      <td class="num">{{num .Requests}}</td>
-      <td class="num">{{num .TokensIn}} / {{num .TokensOut}}</td>
-    </tr>
-    {{end}}
+    {{range .Rows}}{{template "breakdown-row" .}}{{end}}
+    {{with .Other}}{{template "breakdown-row" .}}{{end}}
     </tbody>
   </table>
   {{else}}<p class="muted">No data.</p>{{end}}
 </section>
+{{end}}
+
+{{define "breakdown-row"}}
+<tr>
+  <td class="label-cell">
+    {{if .Color}}<i class="sw {{.Color}}"></i>{{end}}{{if .URL}}<a href="{{.URL}}" title="{{.Name}}">{{.Name}}</a>{{else}}<span class="muted">{{.Name}}</span>{{end}}
+    <div class="share" style="width: {{printf "%.1f" .Share}}%"></div>
+  </td>
+  <td class="num">{{usd .Cost}}{{if .Unpriced}} <span class="warn-text" title="{{.Unpriced}} requests without known price">*</span>{{end}}</td>
+  <td class="num muted">{{share .Share}}</td>
+  <td class="num">{{num .Requests}}</td>
+  <td class="num">{{num .TokensIn}} / {{num .TokensOut}}</td>
+</tr>
 {{end}}

@@ -245,6 +245,69 @@ func testStore(t *testing.T, s Store) {
 	}
 }
 
+func TestSeries(t *testing.T) {
+	for name, s := range backends(t) {
+		t.Run(name, func(t *testing.T) { testSeries(t, s) })
+	}
+}
+
+func testSeries(t *testing.T, s Store) {
+	ctx := context.Background()
+	h0 := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	if err := s.Insert(ctx, []*Request{
+		req(h0.Add(5*time.Minute), "gpt-4o", "k1", "alice", f64(1)),
+		req(h0.Add(50*time.Minute), "claude", "k1", "bob", f64(2)),
+		req(h0.Add(70*time.Minute), "llama", "k2", "", f64(4)),
+		req(h0.Add(80*time.Minute), "gpt-4o", "k2", "", nil),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hour := int64(time.Hour / time.Millisecond)
+	f := Filter{Since: h0.UnixMilli()}
+
+	total, err := s.Series(ctx, f, hour, ByNone, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprint([]SeriesRow{
+		{Start: h0.UnixMilli(), Requests: 2, CostUSD: 3},
+		{Start: h0.Add(time.Hour).UnixMilli(), Requests: 2, CostUSD: 4},
+	})
+	if fmt.Sprint(total) != want {
+		t.Errorf("total series = %v, want %v", total, want)
+	}
+
+	byModel, err := s.Series(ctx, f, hour, ByModel, []string{"gpt-4o"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]float64{}
+	for _, r := range byModel {
+		g := r.Group
+		if r.Other {
+			g = "*"
+		}
+		got[fmt.Sprintf("%d/%s", (r.Start-h0.UnixMilli())/hour, g)] += r.CostUSD
+	}
+	if fmt.Sprint(got) != "map[0/*:2 0/gpt-4o:1 1/*:4 1/gpt-4o:0]" {
+		t.Errorf("by model = %v", got)
+	}
+
+	all, err := s.Series(ctx, f, hour, ByUser, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Errorf("by user without keep = %+v", all)
+	}
+	if _, err := s.Series(ctx, f, hour, ByDay, nil); err == nil {
+		t.Error("ByDay accepted as series group")
+	}
+	if _, err := s.Series(ctx, f, 0, ByNone, nil); err == nil {
+		t.Error("zero bucket accepted")
+	}
+}
+
 func ids(rs []*Request) []string {
 	out := make([]string, len(rs))
 	for i, r := range rs {
