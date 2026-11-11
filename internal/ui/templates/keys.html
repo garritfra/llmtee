@@ -5,7 +5,7 @@
 <div class="banner ok">
   <p>Key <strong>{{.Created.Name}}</strong> created. Copy it now, it is not shown again:</p>
   <pre class="secret">{{.Secret}}</pre>
-  <p class="small">Use it like a provider key, e.g. <code>OPENAI_API_KEY={{.Secret}}</code> with base URL <code>http://&lt;host&gt;:8080/openai/v1</code>. llmtee injects the real provider key.</p>
+  <p class="small">Use it like a provider key, e.g. <code>OPENAI_API_KEY={{.Secret}}</code> with base URL <code>{{.BaseURL}}/openai/v1</code>. llmtee injects the real provider key. See <a href="/setup">Setup</a> for your agent.</p>
 </div>
 {{else if .Created}}<div class="banner ok">Passthrough key <strong>{{.Created.Name}}</strong> labeled.</div>{{end}}
 

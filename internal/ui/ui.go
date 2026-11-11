@@ -22,12 +22,17 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/parser"
+
+	"github.com/garritfra/llmtee/docs"
 	"github.com/garritfra/llmtee/internal/budget"
 	"github.com/garritfra/llmtee/internal/config"
 	"github.com/garritfra/llmtee/internal/keys"
@@ -153,7 +158,7 @@ func New(cfg *config.Config, s store.Store, kc *keys.Cache, b *budget.Tracker) (
 	if err != nil {
 		return nil, err
 	}
-	for _, page := range []string{"overview", "requests", "request", "keys", "login", "error"} {
+	for _, page := range []string{"overview", "requests", "request", "keys", "setup", "login", "error"} {
 		t, err := template.Must(layout.Clone()).ParseFS(templateFS, "templates/"+page+".html")
 		if err != nil {
 			return nil, fmt.Errorf("template %s: %w", page, err)
@@ -177,6 +182,7 @@ func (u *UI) Register(mux *http.ServeMux) {
 	mux.Handle("POST /keys", u.auth(u.writable(u.createKey)))
 	mux.Handle("POST /keys/{id}", u.auth(u.writable(u.updateKey)))
 	mux.Handle("POST /keys/{id}/delete", u.auth(u.writable(u.deleteKey)))
+	mux.Handle("GET /setup", u.auth(u.setup))
 	mux.Handle("GET /export.csv", u.auth(u.exportCSV))
 }
 
@@ -323,6 +329,7 @@ func (u *UI) render(w http.ResponseWriter, r *http.Request, page string, data ma
 	data["Path"] = r.URL.Path
 	data["LogBodies"] = u.cfg.LogBodies
 	data["BodyDays"] = u.cfg.BodyRetentionDays
+	data["BaseURL"] = u.baseURL(r)
 	if u.StoreErr != nil {
 		data["StoreErr"] = u.StoreErr.Error()
 	}
@@ -785,6 +792,101 @@ func (u *UI) reloadKeys(ctx context.Context) {
 	if err := u.keys.Reload(ctx, u.store); err != nil {
 		slog.Error("reload keys", "err", err)
 	}
+}
+
+// ---- setup ----
+
+// baseURL is the address clients use to reach llmtee: LLMTEE_PUBLIC_URL if
+// set, otherwise the scheme and host of the request (honoring the forwarding
+// headers a reverse proxy sets).
+func (u *UI) baseURL(r *http.Request) string {
+	if u.cfg.PublicURL != "" {
+		return u.cfg.PublicURL
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if p := firstHeader(r, "X-Forwarded-Proto"); p == "http" || p == "https" {
+		scheme = p
+	}
+	host := r.Host
+	if h := firstHeader(r, "X-Forwarded-Host"); hostRe.MatchString(h) {
+		host = h
+	}
+	if host == "" {
+		host = "localhost:8080"
+	}
+	return scheme + "://" + host
+}
+
+func firstHeader(r *http.Request, name string) string {
+	v, _, _ := strings.Cut(r.Header.Get(name), ",")
+	return strings.TrimSpace(v)
+}
+
+type endpoint struct {
+	Name, Type, URL, Upstream string
+	ManagedKey                bool
+}
+
+// endpoints lists the client base URL of every configured upstream.
+func endpoints(cfg *config.Config, base string) []endpoint {
+	var out []endpoint
+	for _, up := range cfg.Upstreams {
+		e := endpoint{Name: up.Name, Type: up.Type, Upstream: up.BaseURL, ManagedKey: up.APIKey != ""}
+		switch up.Name {
+		case "openai", "anthropic", "openrouter":
+			e.URL = base + "/" + up.Name
+		default:
+			e.URL = base + "/u/" + up.Name
+		}
+		if up.Type == config.TypeOpenAI {
+			e.URL += "/v1"
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+const docsURL = "https://github.com/garritfra/llmtee/blob/main/docs/"
+
+var (
+	hostRe     = regexp.MustCompile(`^[A-Za-z0-9.\-\[\]:]+$`)
+	skipRe     = regexp.MustCompile(`(?s)<!-- setup-page:skip -->.*?<!-- /setup-page:skip -->`)
+	relLinkRe  = regexp.MustCompile(`href="([^"#:]+\.md)`)
+	markdown   = goldmark.New(goldmark.WithParserOptions(parser.WithAutoHeadingID()))
+	exampleURL = strings.NewReplacer("http://localhost:8080", "\x00", "http://<llmtee>:8080", "\x00")
+)
+
+// renderGuide renders docs/integrations.md with the example address
+// replaced by base. The title and the parts marked setup-page:skip are left
+// out, and links to other docs point to GitHub.
+func renderGuide(base string) (template.HTML, error) {
+	src := skipRe.ReplaceAllString(string(docs.Integrations), "")
+	if _, rest, ok := strings.Cut(src, "\n"); ok && strings.HasPrefix(src, "# ") {
+		src = rest
+	}
+	src = strings.ReplaceAll(exampleURL.Replace(src), "\x00", base)
+	var buf bytes.Buffer
+	if err := markdown.Convert([]byte(src), &buf); err != nil {
+		return "", err
+	}
+	return template.HTML(relLinkRe.ReplaceAllString(buf.String(), `href="`+docsURL+`$1`)), nil
+}
+
+func (u *UI) setup(w http.ResponseWriter, r *http.Request) {
+	base := u.baseURL(r)
+	guide, err := renderGuide(base)
+	if err != nil {
+		u.fail(w, r, 500, err)
+		return
+	}
+	u.render(w, r, "setup", map[string]any{
+		"Guide":        guide,
+		"Endpoints":    endpoints(u.cfg, base),
+		"PublicURLSet": u.cfg.PublicURL != "",
+	})
 }
 
 // ---- CSV export ----

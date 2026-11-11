@@ -1,6 +1,10 @@
 # Integrations
 
-Replace `localhost:8080` with wherever llmtee runs. In every example the client keeps its own provider key (passthrough). To use a managed llmtee key instead, put the `llmtee-…` key where the provider key would go.
+<!-- setup-page:skip -->
+Replace `localhost:8080` with wherever llmtee runs. The *Setup* page in the web UI shows this guide with your instance's base URL filled in.
+<!-- /setup-page:skip -->
+
+In every example the client keeps its own provider key (passthrough). To use a managed llmtee key instead, put the `llmtee-…` key where the provider key would go.
 
 Add `Llmtee-User-Id`, `Llmtee-Session-Id` or `Llmtee-Property-<Name>` headers to attribute requests (see [Request headers](headers.md)).
 
@@ -49,6 +53,16 @@ export ANTHROPIC_BASE_URL=http://localhost:8080/anthropic
 claude
 ```
 
+To make it permanent, add it to `~/.claude/settings.json`:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:8080/anthropic"
+  }
+}
+```
+
 This works with API keys and with a Claude subscription login; the credential is passed through and only its hash is stored. To attribute Claude Code traffic to a llmtee key with a budget, add the key as an extra header:
 
 ```sh
@@ -86,6 +100,37 @@ wire_api = "responses"
 ```
 
 Signing in with a ChatGPT account uses a different backend that llmtee does not proxy.
+
+## opencode
+
+Set the base URL of each provider in `~/.config/opencode/opencode.json` or in `opencode.json` in your project. Keep only the providers you use:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "anthropic": { "options": { "baseURL": "http://localhost:8080/anthropic/v1" } },
+    "openai": { "options": { "baseURL": "http://localhost:8080/openai/v1" } },
+    "openrouter": { "options": { "baseURL": "http://localhost:8080/openrouter/v1" } }
+  }
+}
+```
+
+opencode's Anthropic provider expects the `/v1` in the base URL.
+
+## Pi
+
+Set the base URL of each built-in provider in `~/.pi/agent/models.json`. Models and login stay unchanged:
+
+```json
+{
+  "providers": {
+    "anthropic": { "baseUrl": "http://localhost:8080/anthropic" },
+    "openai": { "baseUrl": "http://localhost:8080/openai/v1" },
+    "openrouter": { "baseUrl": "http://localhost:8080/openrouter/v1" }
+  }
+}
+```
 
 ## Ollama
 
